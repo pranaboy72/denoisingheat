@@ -3,98 +3,67 @@ import gym
 import torch
 from torch.utils.tensorboard import SummaryWriter
 import numpy as np
-import itertools
-import argparse
+import matplotlib.pyplot as plt
+import einops
 
-import scorefield
 from scorefield.models.trainer import Trainer
-from scorefield.utils.rl_utils import load_config
-from scorefield.utils.rendering import Maze2dRenderer
+from scorefield.utils.rl_utils import load_config, eval_mode, set_seed_everywhere
+from scorefield.utils.rendering import Maze2dRenderer, stamp_target
 
 
-# Args
-sac_config_dir = "/home/junwoo/scorefield/scorefield/configs/sac_args.yaml"
-args = load_config(sac_config_dir)
+def main():    
+    # Args
+    sac_config_dir = "/home/junwoo/scorefield/scorefield/configs/sac_args.yaml"
+    args = load_config(sac_config_dir)
 
-# Env & Renderer
-renderer = Maze2dRenderer(args['env_name'])
-env = renderer.env
-env.seed(args['seed'])
-env.action_space.seed(args['seed'])
+    set_seed_everywhere(args['seed'])
 
-torch.manual_seed(args['seed'])
-np.random.seed(args['seed'])
+    # Env & Renderer
+    renderer = Maze2dRenderer(args['env_name'])
+    env = renderer.env
 
-
-# Trainer
-trainer = Trainer(env, args)
+    # Trainer
+    trainer = Trainer(env, renderer, args)
 
 
-# Training Loop
-total_numsteps = 0
-updates = 0
+    # Training Loop
+    episode, episode_reward, done = 0, 0, True
 
-for i_episode in itertools.count(1):
-    episode_reward = 0
-    episode_steps = 0
-    done = False
-    env.reset()
-    
-    obs = renderer.renders()
-    
-    while not done:
-        action = trainer(obs, total_numsteps)
+    for step in range(args['num_train_steps']):
         
-        if len(trainer.memory) > args['batch_size']:
-            trainer.update_params(updates)
-            updates += 1
+        # evaluate agent periodically
+        if step % args['eval_freq'] == 0 and step > 0:
+            trainer.evaluate(args['num_eval_episodes'])
+            
+        if done:
+            env.reset(seed=args['seed'])
+            obs = renderer.renders()
+            obs = stamp_target(obs, args['target_points'])
+            # obs = einops.rearrange(obs, 'c h w -> h w c')
+            # plt.imshow(obs)
+            # plt.show()
+            done = False
+            episode_reward = 0
+            episode_step = 0
+            episode += 1
+            
+        # sample action for data collection
+        action = trainer(obs, episode_step, step)
         
-        _, reward, done, _ = env.step(action) # Step
-        episode_steps += 1
-        total_numsteps += 1
-        episode_reward += reward
-        
-        mask = 1 if episode_steps == env._max_episode_steps else float(not done)
-        
+        if step >= args['init_steps']:
+            trainer.update_params(step)
+            
+        _, reward, done, _ = env.step(action)
         next_obs = renderer.renders()
         
-        trainer.memory.push(obs, reward, next_obs, mask)
+        # allow infinite bootstrap
+        done_bool = 0 if episode_step +1 == env.max_episode_steps else float(done)
+        episode_reward += reward
+        trainer.buffer.add(obs, action, reward, next_obs, done_bool, episode_step)
         
         obs = next_obs
-        
-    if total_numsteps > args['num_steps']:
-        break
-    
-    trainer.writer.add_scalar('reward/train', episode_reward, i_episode)
-    print(f"Episode: {i_episode}, total numsteps: {total_numsteps}, episode steps: {episode_steps},\
-        reward: {round(episode_reward, 2)}")
-    
-    if i_episode % 10 == 0 and args['eval'] is True:
-        avg_reward = 0.
-        episodes = 10
-        episode_steps = 0
-        
-        for _ in range(episodes):
-            env.reset()
-            episode_reward = 0
-            done = False
-            
-            obs = renderer.renders()
-            
-            while not done:
-                action = trainer(obs, episode_steps, evaluate=True)
-                _, reward, done, _ = env.step(action)
-                episode_reward += reward
-                
-                obs = renderer.renders()
-                
-            avg_reward += episode_reward
-        avg_reward /= episodes
-        
-        trainer.writer.add_scalar('avg_reward/test', avg_reward, i_episode)
-        
-        print("----------------------------------------")
-        print(f"Test Episodes: {episodes}, Avg. Reward: {round(avg_reward,2)}")
-        print("----------------------------------------")
-        
-env.close()
+        episode_step += 1
+
+if __name__ == "__main__":
+    torch.multiprocessing.set_start_method('spawn')
+    main()

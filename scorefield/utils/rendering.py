@@ -1,10 +1,13 @@
 import os
 import numpy as np
+import torch
 import einops
 import imageio
 import matplotlib.pyplot as plt
 import gym
 import warnings
+import d4rl
+import cv2
 
 from scorefield.datasets.d4rl import load_environment
 
@@ -20,14 +23,16 @@ def plot2img(fig, remove_margins=True):
     canvas = FigureCanvasAgg(fig)
     canvas.draw()
     img_as_string, (width, height) = canvas.print_to_buffer()
-    return np.fromstring(img_as_string, dtype='uint8').reshape((height, width, 4))
+    img = np.fromstring(img_as_string, dtype='uint8').reshape((height, width, 4))[:,:,:3]
+    einops.rearrange(img, 'h w c -> c h w')
+    return img
 
 
 MAZE_BOUNDS = {
     'maze2d-umaze-v1': (0, 5, 0, 5),
     'maze2d-medium-v1': (0, 8, 0, 8),
     'maze2d-large-v1': (0, 9, 0, 12),
-    'maze2d-open-v2': (0, 8, 0, 8)
+    'maze2d-open-v1': (0, 8, 0, 8)
 }
 
 class MazeRenderer:
@@ -45,12 +50,15 @@ class MazeRenderer:
                    extent=self._extent, cmap=plt.cm.binary, vmin=0, vmax=1)
         plt.axis('off')
         plt.title(title)
+        
         img = plot2img(fig, remove_margins=self._remove_margins)
+        img = cv2.resize(img, (64,64), interpolation=cv2.INTER_CUBIC)
+        img = einops.rearrange(img, 'h w c -> c h w')
         return img
     
 
 class Maze2dRenderer(MazeRenderer):
-    def __init__(self, env):   # Unlike Diffuser, we use birdeye-view of maze env with pixel image 
+    def __init__(self, env): 
         self.env_name = env
         self.env = load_environment(env)
         self._background = self.env.maze_arr == 10
@@ -69,3 +77,21 @@ class Maze2dRenderer(MazeRenderer):
         
         return super().renders(**kwargs)
             
+            
+def stamp_target(img, target_points, stamp_size=2):
+    stamp = torch.zeros((3, stamp_size, stamp_size))
+    stamp[0, :, :] = 255 # Red stamp
+    
+    for x, y in target_points:
+        # Get bounds of the stamp region
+        start_x = x - stamp_size // 2
+        end_x = x + stamp_size // 2
+        start_y = y - stamp_size // 2
+        end_y = y + stamp_size // 2
+        
+        # print(f'{start_x} {end_x} {start_y} {end_y}')
+     
+        # Make stamps
+        img[:, start_x:end_x, start_y:end_y] = stamp
+        
+    return img

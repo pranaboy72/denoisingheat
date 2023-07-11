@@ -1,18 +1,54 @@
+########  SAC  #######
+
+# Env
+env_name: 'maze2d-open-v1'
+image_size: 64
+action_repeat: 1
+target_points: [[20,20],[20,40]]
+
+# Replay Buffer
+replay_buffer_capacity: 100000
+
+# Train
+init_steps: 1000
+num_train_steps: 1000000
+batch_size: 32
+hidden_dim: 1024
+
+# Eval
+eval_freq: 1000
+num_eval_episodes: 10
+
+# Critic 
+critic_lr: 0.001
+critic_beta: 0.9
+critic_tau: 0.01
+critic_target_update_freq: 2
+
+# Actor
+actor_lr: 0.001
+actor_beta: 0.9
+actor_log_std_min: -10
+actor_log_std_max: 2
+actor_update_freq: 2
+
+# Encoder
+feature_dim: 128
+encoder_lr: 0.001
+encoder_tau: 0.05
+
 # SAC
-env_name: 'maze2d-open-v0'
-eval: True # Evaluates a policy every 10 episode
-gamma: 0.99
-tau: 0.005
-critic_lr: 0.0003
-actor_lr: 0.0003
-alpha: 0.2
-automatic_entropy_tuning: False
-seed: 123456
-batch_size: 256
-num_steps: 1000001
-hidden_size: 256
-updates_per_step: 1
-start_steps: 10000
-target_update_interval: 1
-replay_size: 1000000
-cuda: store_true
+discount: 0.99
+init_temperature: 0.1
+alpha_lr: 0.0001
+alpha_beta: 0.5
+
+# Misc
+seed: 1
+work_dir: '.'
+save_tb: False
+save_video: False
+save_model: False
+detach_encoder: False
+
+log_interval: 100

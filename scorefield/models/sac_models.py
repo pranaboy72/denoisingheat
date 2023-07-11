@@ -2,115 +2,148 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.distributions import Normal
+import numpy as np
 
-LOG_SIG_MAX = 2
-LOG_SIG_MIN = -20
-epsilon = 1e-6
+from .encoder import make_encoder
 
-def weights_init_(m):
+LOG_FREQ = 10000
+
+
+def gaussian_logprob(noise, log_std):
+    """Compute Gaussian log probability."""
+    residual = (-0.5 * noise.pow(2) - log_std).sum(-1, keepdim=True)
+    return residual - 0.5 * np.log(2 * np.pi) * noise.size(-1)
+
+
+def squash(mu, pi, log_pi):
+    """Apply squashing function.
+    See appendix C from https://arxiv.org/pdf/1812.05905.pdf.
+    """
+    mu = torch.tanh(mu)
+    if pi is not None:
+        pi = torch.tanh(pi)
+    if log_pi is not None:
+        log_pi -= torch.log(F.relu(1 - pi.pow(2)) + 1e-6).sum(-1, keepdim=True)
+    return mu, pi, log_pi
+
+
+def weight_init(m):
+    """Custom weight init for Conv2D and Linear layers."""
     if isinstance(m, nn.Linear):
-        torch.nn.init.xavier_uniform_(m.weight, gain=1)
-        torch.nn.init.constant_(m.bias, 0)
+        nn.init.orthogonal_(m.weight.data)
+        m.bias.data.fill_(0.0)
+    elif isinstance(m, nn.Conv2d) or isinstance(m, nn.ConvTranspose2d):
+        # delta-orthogonal init from https://arxiv.org/pdf/1806.05393.pdf
+        assert m.weight.size(2) == m.weight.size(3)
+        m.weight.data.fill_(0.0)
+        m.bias.data.fill_(0.0)
+        mid = m.weight.size(2) // 2
+        gain = nn.init.calculate_gain('relu')
+        nn.init.orthogonal_(m.weight.data[:, :, mid, mid], gain)
 
-class ValueNetwork(nn.Module):
-    def __init__(self, feature_dim, hidden_dim):
+class Actor(nn.Module):
+    """MLP actor network."""
+    def __init__(
+        self, obs_shape, action_shape, hidden_dim, 
+        feature_dim, log_std_min, log_std_max,
+    ):
         super().__init__()
-        
-        self.linear1 = nn.Linear(feature_dim, hidden_dim)
-        self.linear2 = nn.Linear(hidden_dim, hidden_dim)
-        self.linear3 = nn.Linear(hidden_dim, 1)
-        
-        self.apply(weights_init_)
-        
-    def forward(self, state):
-        x = F.relu(self.linear1(state))
-        x = F.relu(self.linear2(x))
-        x = self.linear3(x)
-        return x
-    
-class QNetwork(nn.Module):
-    def __init__(self, feature_dim, num_actions, hidden_dim):
-        super().__init__()
-        
-        # Q1 
-        self.linear1 = nn.Linear(feature_dim + num_actions, hidden_dim)
-        self.linear2 = nn.Linear(hidden_dim, hidden_dim)
-        self.linear3 = nn.Linear(hidden_dim, 1)
-        
-        # Q2
-        self.linear4 = nn.Linear(feature_dim + num_actions, hidden_dim)
-        self.linear5 = nn.Linear(hidden_dim, hidden_dim)
-        self.linear6 = nn.Linear(hidden_dim, 1)
-        
-        self.apply(weights_init_)
-        
-    def forward(self, state, action):
-        xu = torch.cat([state, action], 1)
-        
-        x1 = F.relu(self.linear1(xu))
-        x1 = F.relu(self.linear2(x1))
-        x1 = self.linear3(x1)
-        
-        x2 = F.relu(self.linear4(xu))
-        x2 = F.relu(self.linear5(x2))
-        x2 = self.linear6(x2)
-        
-        return x1, x2
-    
-class GaussianPolicy(nn.Module):
-    def __init__(self, feature_dim, num_actions, hidden_dim, action_space=None):
-        super().__init__()
-        
-        self.linear1 = nn.Linear(feature_dim, hidden_dim)
-        self.linear2 = nn.Linear(hidden_dim, hidden_dim)
-        
-        self.mean_linear = nn.Linear(hidden_dim, num_actions)
-        self.log_std_linear = nn.Linear(hidden_dim, num_actions)
-        
-        self.apply(weights_init_)
-        
-        # action rescaling
-        if action_space is None:
-            self.action_scale = torch.tensor(1.)
-            self.action_bias = torch.tensor(0.)
-            
-        else:
-            self.action_scale = torch.FloatTensor(
-                (action_space.high - action_space.low) / 2.)
-            self.action_bias = torch.FloatTensor(
-                (action_space.high + action_space.low) / 2.)
-            
-    def forward(self, state):
-        x = F.relu(self.linear1(state))
-        x = F.relu(self.linear2(x))
-        mean = self.mean_linear(x)
-        log_std = self.log_std_linear(x)
-        log_std = torch.clamp(log_std, min=LOG_SIG_MIN, max=LOG_SIG_MAX)
-        return mean, log_std
-    
-    def sample(self, state):
-        try:
-            mean, log_std = self.forward(state)
+
+        self.encoder = make_encoder(obs_shape, feature_dim)
+
+        self.log_std_min = log_std_min
+        self.log_std_max = log_std_max
+
+        self.trunk = nn.Sequential(
+            nn.Linear(feature_dim + 1, hidden_dim), nn.ReLU(), # + 1: time 
+            nn.Linear(hidden_dim, hidden_dim), nn.ReLU(),
+            nn.Linear(hidden_dim, 2 * action_shape)
+        )
+
+
+        self.apply(weight_init)
+
+    def forward(
+        self, obs, timestep, compute_pi=True, compute_log_pi=True, detach_encoder=False
+    ):
+        obs = self.encoder(obs, detach=detach_encoder)
+        obs = torch.cat([obs, timestep], dim=1)
+
+        mu, log_std = self.trunk(obs).chunk(2, dim=-1)
+
+        # constrain log_std inside [log_std_min, log_std_max]
+        log_std = torch.tanh(log_std)
+        log_std = self.log_std_min + 0.5 * (
+            self.log_std_max - self.log_std_min
+        ) * (log_std + 1)
+
+        if compute_pi:
             std = log_std.exp()
-            normal = Normal(mean, std)
-            x_t = normal.rsample() # for reparametrization trick (mean + std * N(0,1))
-            y_t = torch.tanh(x_t)
-            action = y_t * self.action_scale + self.action_bias
-            log_prob = normal.log_prob(x_t)
-            # Enforcing Action Bound
-            log_prob -= torch.log(self.action_scale * (1 - y_t.pow(2)) + epsilon)
-            log_prob = log_prob.sum(1, keep_dim=True)
-            mean = torch.tanh(mean) * self.action_scale + self.action_bias
-            return action, log_prob, mean
-        except:
-            print(f'mean: {mean}')
-            print(f'std: {std}')
-            
-    def to(self, device):
-        self.action_scale = self.action_scale.to(device)
-        self.action_bias = self.action_bias.to(device)
-        return super().to(device)
-    
+            noise = torch.randn_like(mu)
+            pi = mu + noise * std
+        else:
+            pi = None
+            entropy = None
+
+        if compute_log_pi:
+            log_pi = gaussian_logprob(noise, log_std)
+        else:
+            log_pi = None
+
+        mu, pi, log_pi = squash(mu, pi, log_pi)
+
+        return mu, pi, log_pi, log_std
+
+
+class QFunction(nn.Module):
+    """MLP for q-function."""
+    def __init__(self, obs_dim, action_dim, hidden_dim):
+        super().__init__()
+
+        self.trunk = nn.Sequential(
+            nn.Linear(obs_dim + action_dim, hidden_dim), nn.ReLU(),
+            nn.Linear(hidden_dim, hidden_dim), nn.ReLU(),
+            nn.Linear(hidden_dim, 1)
+        )
+
+    def forward(self, obs, action):
+        assert obs.size(0) == action.size(0)
+
+        obs_action = torch.cat([obs, action], dim=1)
+        return self.trunk(obs_action)
+
+
+class Critic(nn.Module):
+    """Critic network, employes two q-functions."""
+    def __init__(
+        self, obs_shape, action_shape, hidden_dim, feature_dim, 
+    ):
+        super().__init__()
+
+
+        self.encoder = make_encoder(obs_shape, feature_dim)
+
+        self.Q1 = QFunction(
+            feature_dim+1, action_shape, hidden_dim  # 1: time
+        )
+        self.Q2 = QFunction(
+            feature_dim+1, action_shape, hidden_dim
+        )
+
+        self.outputs = dict()
+        self.apply(weight_init)
+
+    def forward(self, obs, timestep, action, detach_encoder=False):
+        # detach_encoder allows to stop gradient propogation to encoder
+        obs = self.encoder(obs, detach=detach_encoder)
+        obs = torch.cat([obs, timestep], dim=1)
+
+        q1 = self.Q1(obs, action)
+        q2 = self.Q2(obs, action)
+
+        return q1, q2
+
+
     
         
     

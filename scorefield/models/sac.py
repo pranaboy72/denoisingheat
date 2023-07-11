@@ -1,135 +1,142 @@
 import os
 import torch
+import torch.nn as nn
 import torch.nn.functional as F
 from torch.optim import Adam
-import gin
 
-from scorefield.utils.rl_utils import soft_update, hard_update
-from .sac_models import GaussianPolicy, QNetwork
+from scorefield.utils.rl_utils import soft_update_params
+from .sac_models import Actor, Critic
 import numpy as np
 
-@gin.configurable()
+
 class SAC:
-    def __init__(self, env, args):
-        obs_shape = args['feature_dim']
-        action_space = env.action_space
+    def __init__(self, env, args, device):        
+        self.device = device
         
-        self.gamma = args['gamma']
-        self.tau = args['tau']
-        self.alpha = args['alpha']
-        
-        self.policy_type = args['policy']
-        self.target_update_interval = args['target_update_interval']
-        self.automatic_entropy_tuning = args['automatic_entropy_tuning']
+        self.discount = args['discount']
+        self.critic_tau = args['critic_tau']
+        self.encoder_tau = args['encoder_tau']
+        self.actor_update_freq = args['actor_update_freq']
+        self.critic_target_update_freq = args['critic_target_update_freq']
+        self.log_interval = args['log_interval']
+        self.image_size = args['image_size']
+        self.feature_dim = args['feature_dim']
+        self.detach_encoder = args['detach_encoder']
         
         self.device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+
+        obs_shape = (3, self.image_size, self.image_size)
+
+
+        self.actor = Actor(
+            obs_shape, env.action_space.shape[0], args['hidden_dim'],
+            self.feature_dim, args['actor_log_std_min'], args['actor_log_std_max']
+        ).to(device)
         
-        self.critic = QNetwork(obs_shape, action_space.shape[0], args['hidden_size']).to(self.device)
-        self.critic_targets = QNetwork(obs_shape, action_space.shape[0], args['hidden_size']).to(self.device)
-        self.critic_optim = Adam(self.critic.parameters(), lr=args['critic_lr'])
+        self.critic = Critic(
+            obs_shape, env.action_space.shape[0], args['hidden_dim'], self.feature_dim,
+        ).to(device)
         
-        hard_update(self.critic_targets, self.critics)
+        self.critic_target = Critic(
+            obs_shape, env.action_space.shape[0], args['hidden_dim'], self.feature_dim, 
+        ).to(device)
         
-        if self.automatic_entropy_tuning:
-            self.target_entropy = -torch.prod(torch.Tensor(action_space.shape).to(self.deivce)).item()
-            self.log_alpha = torch.zeros(1, requires_grad=True, device=self.device)
-            self.alpha_optim = Adam([self.log_alpha], lr=args['critic_lr'])
+        self.critic_target.load_state_dict(self.critic.state_dict())
+        
+        self.actor.encoder.copy_conv_weights_from(self.critic.encoder)
+        
+        self.log_alpha = torch.tensor(np.log(args['init_temperature'])).to(device)
+        self.log_alpha.requires_grad = True
+        # set entropy to -|A|
+        self.target_entropy = -np.prod(env.action_space.shape[0])
+        
+        # optimizers
+        self.actor_optimizer = Adam(
+            self.actor.parameters(), lr=args['actor_lr'], betas=(args['actor_beta'], 0.999)
+        )
+        self.critic_optimizer = Adam(
+            self.critic.parameters(),lr=args['critic_lr'], betas=(args['critic_beta'], 0.999)
+        )
+        
+        self.log_alpha_optimizer = Adam(
+            [self.log_alpha], lr=args['alpha_lr'], betas=(args['alpha_beta'], 0.999)
+        )
+        
+        self.encoder_optimizer = Adam(self.critic.encoder.parameters(), lr=args['encoder_lr'])
+        
+        self.train()        
             
-        self.policy = GaussianPolicy(obs_shape)
-        self.policy_optim = Adam(self.policy.parameters(), lr=args['actor_lr'])
+    def train(self, training=True):
+        self.training = training
+        self.actor.train(training)
+        self.critic.train(training)
         
-    def select_action(self, state, evaluate):
-        state = torch.FloatTensor(state).to(self.device).unsqueeze(0)
-        if evaluate is False:
-            action, _, _ = self.policy.sample(state)
-        else:
-            _, _, action = self.policy.sample(state)
-        return action.detach().cpu().numpy()[0]
     
-    def update_parameters(self, memory, batch_size, updates):
-        # Sample a batch from memory
-        state_batch, action_batch, reward_batch, next_state_batch, mask_batch = memory.sample(batch_size=batch_size)
-
-        state_batch = torch.FloatTensor(state_batch).to(self.device)
-        next_state_batch = torch.FloatTensor(next_state_batch).to(self.device)
-        action_batch = torch.FloatTensor(action_batch).to(self.device)
-        reward_batch = torch.FloatTensor(reward_batch).to(self.device).unsqueeze(1)
-        mask_batch = torch.FloatTensor(mask_batch).to(self.device).unsqueeze(1)
-
+    @property
+    def alpha(self):
+        return self.log_alpha.exp()
+    
+    def select_action(self, obs, timestep):
         with torch.no_grad():
-            next_state_action, next_state_log_pi, _ = self.policy.sample(next_state_batch)
-            qf1_next_target, qf2_next_target = self.critic_target(next_state_batch, next_state_action)
-            min_qf_next_target = torch.min(qf1_next_target, qf2_next_target) - self.alpha * next_state_log_pi
-            next_q_value = reward_batch + mask_batch * self.gamma * (min_qf_next_target)
-        qf1, qf2 = self.critic(state_batch, action_batch)  # Two Q-functions to mitigate positive bias in the policy improvement step
-        qf1_loss = F.mse_loss(qf1, next_q_value)  # JQ = 𝔼(st,at)~D[0.5(Q1(st,at) - r(st,at) - γ(𝔼st+1~p[V(st+1)]))^2]
-        qf2_loss = F.mse_loss(qf2, next_q_value)  # JQ = 𝔼(st,at)~D[0.5(Q1(st,at) - r(st,at) - γ(𝔼st+1~p[V(st+1)]))^2]
-        qf_loss = qf1_loss + qf2_loss
+            obs = torch.FloatTensor(obs).to(self.device)
+            obs = obs.unsqueeze(0)
+            timestep = torch.FloatTensor(timestep)
+            mu, _, _, _ = self.actor(obs, timestep, compute_pi=False, compute_log_pi=False)
+            return mu.cpu().data.numpy().flatten()
+        
+    def sample_action(self, obs, timestep):
+        with torch.no_grad():
+            obs = torch.FloatTensor(obs).to(self.device)
+            obs = obs.unsqueeze(0)
+            timestep = torch.FloatTensor(timestep)
+            mu, pi, _, _ = self.actor(obs, timestep, compute_log_pi=False)
+            return pi.cpu().data.numpy().flatten()
+        
+    def update_critic(self, obs, action, reward, next_obs, not_done, timestep):
+        with torch.no_grad():
+            _, policy_action, log_pi, _ = self.actor(next_obs, timestep)
+            target_Q1, target_Q2 = self.critic_target(next_obs, policy_action)
+            target_V = torch.min(target_Q1, target_Q2) - self.alpha.detach() * log_pi
+            target_Q = reward + (not_done * self.discount * target_V)
+            
+        # get current Q estimates
+        current_Q1, current_Q2 = self.critic(
+            obs, action, detach_encoder=self.detach_encoder)
+        critic_loss = F.mse_loss(current_Q1, target_Q) + F.mse_loss(current_Q2, target_Q)
 
-        self.critic_optim.zero_grad()
-        qf_loss.backward()
-        self.critic_optim.step()
-
-        pi, log_pi, _ = self.policy.sample(state_batch)
-
-        qf1_pi, qf2_pi = self.critic(state_batch, pi)
-        min_qf_pi = torch.min(qf1_pi, qf2_pi)
-
-        policy_loss = ((self.alpha * log_pi) - min_qf_pi).mean() # Jπ = 𝔼st∼D,εt∼N[α * logπ(f(εt;st)|st) − Q(st,f(εt;st))]
-
-        self.policy_optim.zero_grad()
-        policy_loss.backward()
-        self.policy_optim.step()
-
-        if self.automatic_entropy_tuning:
-            alpha_loss = -(self.log_alpha * (log_pi + self.target_entropy).detach()).mean()
-
-            self.alpha_optim.zero_grad()
-            alpha_loss.backward()
-            self.alpha_optim.step()
-
-            self.alpha = self.log_alpha.exp()
-            alpha_tlogs = self.alpha.clone() # For TensorboardX logs
-        else:
-            alpha_loss = torch.tensor(0.).to(self.device)
-            alpha_tlogs = torch.tensor(self.alpha) # For TensorboardX logs
-
-
-        if updates % self.target_update_interval == 0:
-            soft_update(self.critic_target, self.critic, self.tau)
-
-        return qf1_loss.item(), qf2_loss.item(), policy_loss.item(), alpha_loss.item(), alpha_tlogs.item()
-
-
-    # Save model parameters
-    def save_checkpoint(self, env_name, suffix="", ckpt_path=None):
-        if not os.path.exists('checkpoints/'):
-            os.makedirs('checkpoints/')
-        if ckpt_path is None:
-            ckpt_path = "checkpoints/sac_checkpoint_{}_{}".format(env_name, suffix)
-        print('Saving models to {}'.format(ckpt_path))
-        torch.save({'policy_state_dict': self.policy.state_dict(),
-                    'critic_state_dict': self.critic.state_dict(),
-                    'critic_target_state_dict': self.critic_target.state_dict(),
-                    'critic_optimizer_state_dict': self.critic_optim.state_dict(),
-                    'policy_optimizer_state_dict': self.policy_optim.state_dict()}, ckpt_path)
-
-    # Load model parameters
-    def load_checkpoint(self, ckpt_path, evaluate=False):
-        print('Loading models from {}'.format(ckpt_path))
-        if ckpt_path is not None:
-            checkpoint = torch.load(ckpt_path)
-            self.policy.load_state_dict(checkpoint['policy_state_dict'])
-            self.critic.load_state_dict(checkpoint['critic_state_dict'])
-            self.critic_target.load_state_dict(checkpoint['critic_target_state_dict'])
-            self.critic_optim.load_state_dict(checkpoint['critic_optimizer_state_dict'])
-            self.policy_optim.load_state_dict(checkpoint['policy_optimizer_state_dict'])
-
-            if evaluate:
-                self.policy.eval()
-                self.critic.eval()
-                self.critic_target.eval()
-            else:
-                self.policy.train()
-                self.critic.train()
-                self.critic_target.train()
+        # Optimize the critic
+        self.critic_optimizer.zero_grad()
+        critic_loss.backward()
+        self.critic_optimizer.step()
+        
+    def update_actor_and_alpha(self, obs, timestep):
+        # detach encoder, so we don't update it with the actor loss
+        _, pi, log_pi, log_std = self.actor(obs, timestep, detach_encoder=True)
+        actor_Q1, actor_Q2 = self.critic(obs, pi, detach_encoder=True)
+        
+        actor_Q = torch.min(actor_Q1, actor_Q2)
+        actor_loss = (self.alpha.detach() * log_pi - actor_Q).mean()
+        
+        # optimize the actor
+        self.actor_optimizer.zero_grad()
+        actor_loss.backward()
+        self.actor_optimizer.step()
+        
+        self.log_alpha_optimizer.zero_grad()
+        alpha_loss = (self.alpha * (-log_pi - self.target_entropy).detach()).mean()
+        alpha_loss.backward()
+        self.log_alpha_optimizer.step()
+        
+    def update(self, replay_buffer, step):
+        obs, action, reward, next_obs, not_done, timestep = replay_buffer.sample()
+        
+        self.update_critic(obs, action, reward, next_obs, not_done, timestep)
+        
+        if step % self.actor_update_freq == 0:
+            self.update_actor_and_alpha(obs, timestep)
+            
+        if step % self.critic_target_update_freq == 0:
+            soft_update_params(self.critic.Q1, self.critic_target.Q1, self.critic_tau)
+            soft_update_params(self.critic.Q2, self.critic_target.Q2, self.critic_tau)
+            soft_update_params(self.critic.encoder, self.critic_target.encoder, self.encoder_tau)
+            

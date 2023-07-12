@@ -43,7 +43,7 @@ alpha_lr: 0.0001
 alpha_beta: 0.5
 
 # Misc
-seed: 1
+seed: 123
 work_dir: '.'
 save_tb: False
 save_video: False

@@ -9,6 +9,7 @@ import warnings
 import d4rl
 import cv2
 import pandas as pd
+import random
 
 from scorefield.datasets.d4rl import load_environment
 
@@ -58,16 +59,15 @@ class MazeRenderer:
     
 
 class Maze2dRenderer(MazeRenderer):
-    def __init__(self, env, target_point): 
+    def __init__(self, env): 
         self.env_name = env
         self.env = load_environment(env)
-        self.env.set_target(target_location=target_point)
         self._background = self.env.maze_arr == 10
         self._remove_margins = False
         self._extent = (0, 1, 1, 0)
         
         
-    def renders(self, args, **kwargs):
+    def renders(self):
         bounds = MAZE_BOUNDS[self.env_name]
         
         if len(bounds) == 2:
@@ -76,7 +76,8 @@ class Maze2dRenderer(MazeRenderer):
             _, self.iscale, _, self.jscale = bounds
         else:
             raise RuntimeError(f'Unrecognized bounds for {self.env_name}: {bounds}')
-        img = super().renders(**kwargs)
+        
+        img = super().renders()
         img = self.stamp(img, self.env._target, 'r')
         img = self.stamp(img, self.env.sim.data.qpos, 'b')
         img = einops.rearrange(img, 'h w c -> c h w')
@@ -99,18 +100,19 @@ class Maze2dRenderer(MazeRenderer):
         return init_x, init_y, block_x, block_y
             
     def stamp(self, img, aim, col, stamp_size=2):   
-        target_point = aim
+        target_point = aim.copy()
         if col == 'r': col = [255, 0, 0]
         elif col == 'b': col = [0, 0, 0]
 
-        if isinstance(self.env._target, list):
-            target_point = np.array(target_point)
+        if isinstance(target_point, list):
+            target_point = np.array([target_point])
+    
         if len(target_point.shape) != 2: 
             target_point = np.reshape(target_point, (1,-1))
         
         init_x, init_y, block_x, block_y= self.search_init_block(img)
         # print(init_x, init_y, block_x, block_y)
-       
+        
         target_point[:,0], target_point[:,1] = init_x + block_x + target_point[:,0] * block_x // 2,\
             init_y + block_y + target_point[:,1] * block_y // 2
         
@@ -127,3 +129,4 @@ class Maze2dRenderer(MazeRenderer):
             img[start_x:end_x, start_y:end_y, :] = col
             
         return img
+    

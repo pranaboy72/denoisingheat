@@ -18,7 +18,7 @@ def main():
     set_seed_everywhere(args['seed'])
 
     # Env & Renderer
-    renderer = Maze2dRenderer(args['env_name'], args['target_point'])
+    renderer = Maze2dRenderer(args['env_name'])
     env = renderer.env
 
     # Writer
@@ -40,8 +40,8 @@ def main():
             trainer.evaluate(args['num_eval_episodes'], step)
             
         if done:
-            env.reset(seed=args['seed'])
-            obs = renderer.renders(args)
+            env.reset()
+            obs = renderer.renders()
             save_obs(obs)
             # visualize(obs)
             
@@ -63,7 +63,7 @@ def main():
             
         _, reward, done, _ = env.step(action)
         
-        next_obs = renderer.renders(args)
+        next_obs = renderer.renders()
         
         if episode_step + 1 == env.max_episode_steps or reward == 1.0:
             done = True

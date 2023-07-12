@@ -49,8 +49,8 @@ class Trainer(nn.Module):
         
         def run_eval_loop(sample_stochastically=True):
             for _ in range(num_episodes):
-                self.env.reset()
-                obs = self.renderer.renders(self.args)
+                self.env.reset(seed=self.args['seed'])
+                obs = self.renderer.renders()
                 save_obs(obs)
                 
                 done = False

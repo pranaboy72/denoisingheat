@@ -137,7 +137,7 @@ class Critic(nn.Module):
 
     def forward(self, obs, timestep, action, detach_encoder=False):
         # detach_encoder allows to stop gradient propogation to encoder
-        obs = self.encoder(obs, detach=detach_encoder)
+        obs = self.encoder(obs)
         if not isinstance(timestep, torch.Tensor):
             timestep = torch.Tensor([timestep]).view(1,-1).to(obs.device)
         obs = torch.cat([obs, timestep], dim=1)

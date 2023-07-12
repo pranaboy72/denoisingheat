@@ -93,13 +93,12 @@ class SAC:
     def update_critic(self, obs, action, reward, next_obs, not_done, timestep):
         with torch.no_grad():
             _, policy_action, log_pi, _ = self.actor(next_obs, timestep)
-            target_Q1, target_Q2 = self.critic_target(next_obs, policy_action)
+            target_Q1, target_Q2 = self.critic_target(next_obs, timestep, policy_action)
             target_V = torch.min(target_Q1, target_Q2) - self.alpha.detach() * log_pi
             target_Q = reward + (not_done * self.discount * target_V)
             
         # get current Q estimates
-        current_Q1, current_Q2 = self.critic(
-            obs, action, detach_encoder=self.detach_encoder)
+        current_Q1, current_Q2 = self.critic(obs, timestep, action)
         critic_loss = F.mse_loss(current_Q1, target_Q) + F.mse_loss(current_Q2, target_Q)
 
         # Optimize the critic
@@ -112,7 +111,7 @@ class SAC:
     def update_actor_and_alpha(self, obs, timestep):
         # detach encoder, so we don't update it with the actor loss
         _, pi, log_pi, log_std = self.actor(obs, timestep, detach_encoder=True)
-        actor_Q1, actor_Q2 = self.critic(obs, pi, detach_encoder=True)
+        actor_Q1, actor_Q2 = self.critic(obs, timestep, pi, detach_encoder=True)
         
         actor_Q = torch.min(actor_Q1, actor_Q2)
         actor_loss = (self.alpha.detach() * log_pi - actor_Q).mean()

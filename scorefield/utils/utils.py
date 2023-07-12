@@ -1,6 +1,7 @@
 import os
 import einops
 import matplotlib.pyplot as plt
+import cv2
 
 def log_num_check(path):
     log_num = 0
@@ -18,3 +19,9 @@ def visualize(obs):
     plt.imshow(obs)
     plt.show()
     raise
+
+def save_obs(obs):
+    obs = einops.rearrange(obs, 'c h w -> h w c')
+    cv2.resize(obs, (500,500),interpolation=cv2.INTER_NEAREST)
+    plt.imsave('./logs/img.jpg', obs)
+    

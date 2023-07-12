@@ -8,6 +8,7 @@ import time
 from .sac import SAC
 from ..utils.replay_buffer import ReplayBuffer
 from ..utils.rl_utils import eval_mode
+from ..utils.utils import save_obs
 
 
 class Trainer(nn.Module):
@@ -22,7 +23,7 @@ class Trainer(nn.Module):
         self.args = args
         
         # Save Models
-        self.model_path = args['log_path'] + args['model_path']
+        self.model_path = args['log_path'] + args['model_path'] + 'sac.pt'
         self.best_reward = 0
         
         self.agent = SAC(env, device, args)
@@ -50,6 +51,7 @@ class Trainer(nn.Module):
             for _ in range(num_episodes):
                 self.env.reset()
                 obs = self.renderer.renders(self.args)
+                save_obs(obs)
                 
                 done = False
                 episode_reward = 0
@@ -62,6 +64,8 @@ class Trainer(nn.Module):
                             action = self.agent.select_action(obs, episode_step)
                             
                     _, reward, done, _ = self.env.step(action)
+                    if episode_step + 1 == self.env.max_episode_steps or reward == 1.0:
+                        done = True
                     episode_reward += reward
                     episode_step += 1
                     
@@ -75,6 +79,9 @@ class Trainer(nn.Module):
             
             if mean_ep_reward > self.best_reward:
                 torch.save(self.agent.actor.state_dict(), self.model_path)
+            print("####################################",'\n')
+            print(f"#  Eval reward: {episode_reward}  episode steps: {episode_step}  #",'\n')
+            print("####################################")
             
         run_eval_loop(sample_stochastically=False)    
                                     

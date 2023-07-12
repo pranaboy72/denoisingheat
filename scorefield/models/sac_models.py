@@ -60,13 +60,15 @@ class Actor(nn.Module):
             nn.Linear(hidden_dim, 2 * action_shape)
         )
 
-
         self.apply(weight_init)
 
     def forward(
         self, obs, timestep, compute_pi=True, compute_log_pi=True, detach_encoder=False
     ):
-        obs = self.encoder(obs, detach=detach_encoder)
+        obs = self.encoder(obs)
+        if not isinstance(timestep, torch.Tensor):
+            timestep = torch.Tensor([timestep]).view(1,-1).to(obs.device)
+        
         obs = torch.cat([obs, timestep], dim=1)
 
         mu, log_std = self.trunk(obs).chunk(2, dim=-1)
@@ -136,6 +138,8 @@ class Critic(nn.Module):
     def forward(self, obs, timestep, action, detach_encoder=False):
         # detach_encoder allows to stop gradient propogation to encoder
         obs = self.encoder(obs, detach=detach_encoder)
+        if not isinstance(timestep, torch.Tensor):
+            timestep = torch.Tensor([timestep]).view(1,-1).to(obs.device)
         obs = torch.cat([obs, timestep], dim=1)
 
         q1 = self.Q1(obs, action)

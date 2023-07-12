@@ -10,7 +10,7 @@ import numpy as np
 
 
 class SAC:
-    def __init__(self, env, args, device):        
+    def __init__(self, env, device,args):        
         self.device = device
         
         self.discount = args['discount']
@@ -80,15 +80,13 @@ class SAC:
         with torch.no_grad():
             obs = torch.FloatTensor(obs).to(self.device)
             obs = obs.unsqueeze(0)
-            timestep = torch.FloatTensor(timestep)
             mu, _, _, _ = self.actor(obs, timestep, compute_pi=False, compute_log_pi=False)
             return mu.cpu().data.numpy().flatten()
         
     def sample_action(self, obs, timestep):
         with torch.no_grad():
-            obs = torch.FloatTensor(obs).to(self.device)
+            obs = torch.FloatTensor(obs).to(self.device)            
             obs = obs.unsqueeze(0)
-            timestep = torch.FloatTensor(timestep)
             mu, pi, _, _ = self.actor(obs, timestep, compute_log_pi=False)
             return pi.cpu().data.numpy().flatten()
         
@@ -109,6 +107,8 @@ class SAC:
         critic_loss.backward()
         self.critic_optimizer.step()
         
+        return critic_loss
+        
     def update_actor_and_alpha(self, obs, timestep):
         # detach encoder, so we don't update it with the actor loss
         _, pi, log_pi, log_std = self.actor(obs, timestep, detach_encoder=True)
@@ -127,13 +127,19 @@ class SAC:
         alpha_loss.backward()
         self.log_alpha_optimizer.step()
         
-    def update(self, replay_buffer, step):
+        return actor_loss, alpha_loss
+        
+    def update(self, replay_buffer, writer, step):
         obs, action, reward, next_obs, not_done, timestep = replay_buffer.sample()
         
-        self.update_critic(obs, action, reward, next_obs, not_done, timestep)
+        critic_loss = self.update_critic(obs, action, reward, next_obs, not_done, timestep)
+        writer.add_scalar('loss/critic', critic_loss.item(), step)
         
         if step % self.actor_update_freq == 0:
-            self.update_actor_and_alpha(obs, timestep)
+            actor_loss, alpha_loss = self.update_actor_and_alpha(obs, timestep)
+            
+            writer.add_scalar('loss/actor', actor_loss.item(), step)
+            writer.add_scalar('loss/entropy', alpha_loss.item(), step)
             
         if step % self.critic_target_update_freq == 0:
             soft_update_params(self.critic.Q1, self.critic_target.Q1, self.critic_tau)

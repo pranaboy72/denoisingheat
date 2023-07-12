@@ -8,6 +8,7 @@ import gym
 import warnings
 import d4rl
 import cv2
+import pandas as pd
 
 from scorefield.datasets.d4rl import load_environment
 
@@ -53,45 +54,76 @@ class MazeRenderer:
         
         img = plot2img(fig, remove_margins=self._remove_margins)
         img = cv2.resize(img, (64,64), interpolation=cv2.INTER_CUBIC)
-        img = einops.rearrange(img, 'h w c -> c h w')
         return img
     
 
 class Maze2dRenderer(MazeRenderer):
-    def __init__(self, env): 
+    def __init__(self, env, target_point): 
         self.env_name = env
         self.env = load_environment(env)
+        self.env.set_target(target_location=target_point)
         self._background = self.env.maze_arr == 10
         self._remove_margins = False
         self._extent = (0, 1, 1, 0)
         
-    def renders(self, **kwargs):
+        
+    def renders(self, args, **kwargs):
         bounds = MAZE_BOUNDS[self.env_name]
         
         if len(bounds) == 2:
             _, scale = bounds
         elif len(bounds) == 4:
-            _, iscale, _, jscale = bounds
+            _, self.iscale, _, self.jscale = bounds
         else:
             raise RuntimeError(f'Unrecognized bounds for {self.env_name}: {bounds}')
-        
-        return super().renders(**kwargs)
+        img = super().renders(**kwargs)
+        img = self.stamp(img, self.env._target, 'r')
+        img = self.stamp(img, self.env.sim.data.qpos, 'b')
+        img = einops.rearrange(img, 'h w c -> c h w')
+        return img
             
+    def search_init_block(self,img):
+        init_found = False
+        block_found = False
+        for i in range(img[...,0].shape[0]):
+            for j in range(img[...,1].shape[1]):
+                if img[i,j,0] != 255 and init_found is False:
+                    init_x = i
+                    init_y = j
+                    init_found = True
+                if img[i-1,j,0] != 255 and img[i,j-1,0] != 255 and img[i,j,0] == 255 and init_found:
+                    block_x = i - init_x
+                    block_y = j - init_y
+                if block_found: break
+            if block_found: break
+        return init_x, init_y, block_x, block_y
             
-def stamp_target(img, target_points, stamp_size=2):
-    stamp = torch.zeros((3, stamp_size, stamp_size))
-    stamp[0, :, :] = 255 # Red stamp
-    
-    for x, y in target_points:
-        # Get bounds of the stamp region
-        start_x = x - stamp_size // 2
-        end_x = x + stamp_size // 2
-        start_y = y - stamp_size // 2
-        end_y = y + stamp_size // 2
+    def stamp(self, img, aim, col, stamp_size=2):   
+        target_point = aim
+        if col == 'r': col = [255, 0, 0]
+        elif col == 'b': col = [0, 0, 0]
+
+        if isinstance(self.env._target, list):
+            target_point = np.array(target_point)
+        if len(target_point.shape) != 2: 
+            target_point = np.reshape(target_point, (1,-1))
         
-        # print(f'{start_x} {end_x} {start_y} {end_y}')
-     
-        # Make stamps
-        img[:, start_x:end_x, start_y:end_y] = stamp
+        init_x, init_y, block_x, block_y= self.search_init_block(img)
+        # print(init_x, init_y, block_x, block_y)
+       
+        target_point[:,0], target_point[:,1] = init_x + block_x + target_point[:,0] * block_x // 2,\
+            init_y + block_y + target_point[:,1] * block_y // 2
         
-    return img
+        for x, y in target_point:           
+            # Get bounds of the stamp region
+            start_x = int(x - stamp_size // 2)
+            end_x =  int(x + stamp_size // 2)
+            start_y =  int(y - stamp_size // 2)
+            end_y = int(y + stamp_size // 2)
+            
+            # print(f'{start_x} {end_x} {start_y} {end_y}')
+        
+            # Make stamps
+            img[start_x:end_x, start_y:end_y, :] = col
+            
+        return img

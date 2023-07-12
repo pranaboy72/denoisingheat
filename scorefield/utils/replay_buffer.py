@@ -5,7 +5,7 @@ import numpy as np
 
 class ReplayBuffer(Dataset):
     """Buffer to store environment transitions."""
-    def __init__(self, args, action_shape, device,transform=None):
+    def __init__(self, action_shape, device,args,transform=None):
         self.capacity = args['replay_buffer_capacity']
         self.batch_size = args['batch_size']
         self.device = device
@@ -27,14 +27,13 @@ class ReplayBuffer(Dataset):
     
 
     def add(self, obs, action, reward, next_obs, done, timestep):
-       
         np.copyto(self.obses[self.idx], obs)
         np.copyto(self.actions[self.idx], action)
         np.copyto(self.rewards[self.idx], reward)
         np.copyto(self.next_obses[self.idx], next_obs)
         np.copyto(self.not_dones[self.idx], not done)
         np.copyto(self.timesteps[self.idx], timestep)
-
+        
         self.idx = (self.idx + 1) % self.capacity
         self.full = self.full or self.idx == 0
 

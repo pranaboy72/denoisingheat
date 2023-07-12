@@ -23,7 +23,7 @@ class Encoder(nn.Module):
         for i in range(self.num_layers-1):
             self.convs.append(nn.Conv2d(filters[i], filters[i+1], kernel_size=5, stride=2, padding=2))
         
-        self.fc1 = nn.Linear(self.num_layers * 32 * 32, 2 * self.feature_dim)
+        self.fc1 = nn.Linear(32 * 32, 2 * self.feature_dim)
         self.fc2 = nn.Linear(2 * self.feature_dim, feature_dim)
 
     

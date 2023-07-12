@@ -6,22 +6,27 @@ import numpy as np
 import time
 
 from .sac import SAC
-from scorefield.utils.replay_buffer import ReplayBuffer
-from scorefield.utils.rl_utils import eval_mode
+from ..utils.replay_buffer import ReplayBuffer
+from ..utils.rl_utils import eval_mode
 
 
 class Trainer(nn.Module):
-    def __init__(self, env, renderer, args):
+    def __init__(self, env, renderer, writer, args):
         super().__init__()
         
         device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
         
         self.env = env
         self.renderer = renderer
+        self.writer = writer
         self.args = args
         
-        self.agent = SAC(env, args, device)
-        self.buffer = ReplayBuffer(args, env.action_space.shape, device)
+        # Save Models
+        self.model_path = args['log_path'] + args['model_path']
+        self.best_reward = 0
+        
+        self.agent = SAC(env, device, args)
+        self.buffer = ReplayBuffer(env.action_space.shape, device, args)
         
         
     def forward(self, obs, timestep, step):       
@@ -35,16 +40,16 @@ class Trainer(nn.Module):
     def update_params(self, step):
         num_updates = 1
         for _ in range(num_updates):
-            self.agent.update(self.buffer, step)
+            self.agent.update(self.buffer, self.writer, step)
         
             
-    def evaluate(self, num_episodes):
+    def evaluate(self, num_episodes, step):
         all_ep_rewards = []
         
         def run_eval_loop(sample_stochastically=True):
             for _ in range(num_episodes):
                 self.env.reset()
-                obs = self.renderer.renders()
+                obs = self.renderer.renders(self.args)
                 
                 done = False
                 episode_reward = 0
@@ -64,6 +69,12 @@ class Trainer(nn.Module):
                 
             mean_ep_reward = np.mean(all_ep_rewards)
             best_ep_reward = np.max(all_ep_rewards)
+            
+            self.writer.add_scalar('eval/mean reward', mean_ep_reward, step)
+            self.writer.add_scalar('eval/best reward', best_ep_reward, step)
+            
+            if mean_ep_reward > self.best_reward:
+                torch.save(self.agent.actor.state_dict(), self.model_path)
             
         run_eval_loop(sample_stochastically=False)    
                                     

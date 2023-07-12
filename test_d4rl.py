@@ -5,7 +5,8 @@ env = gym.make('maze2d-open-v1')
 env.reset()
 try:
     while True:
-        env.step(env.action_space.sample())
+        ob, _, _, _ = env.step(env.action_space.sample())
+        print(ob)
         env.render()
 except:
     env.close()

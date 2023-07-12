@@ -3,8 +3,7 @@
 # Env
 env_name: 'maze2d-open-v1'
 image_size: 64
-action_repeat: 1
-target_points: [[20,20],[20,40]]
+target_point: [1.0, 1.0]
 
 # Replay Buffer
 replay_buffer_capacity: 100000
@@ -51,4 +50,7 @@ save_video: False
 save_model: False
 detach_encoder: False
 
+log_path: './logs/'
 log_interval: 100
+
+model_path: 'pretrained/'

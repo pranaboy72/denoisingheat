@@ -7,7 +7,7 @@ import numpy as np
 from scorefield.models.trainer import Trainer
 from scorefield.utils.rl_utils import load_config, set_seed_everywhere
 from scorefield.utils.rendering import Maze2dRenderer
-from scorefield.utils.utils import log_num_check, visualize, save_obs
+from scorefield.utils.utils import log_num_check
 
 
 def main():    
@@ -22,7 +22,7 @@ def main():
     env = renderer.env
 
     # Writer
-    log_path = args['log_path'] + args['env_name'] + '/tb'
+    log_path = args['log_path'] + 'tb/' +args['env_name']
     log_path = log_num_check(log_path)
     writer = SummaryWriter(log_path)
 
@@ -37,19 +37,20 @@ def main():
         
         # evaluate agent periodically
         if step % args['eval_freq'] == 0 and step > 0:
+            renderer.renders(True)
             trainer.evaluate(args['num_eval_episodes'], step)
+            done = True
             
         if done:
             env.reset()
+            renderer.map_init()
             obs = renderer.renders()
-            save_obs(obs)
-            # visualize(obs)
             
             if step % args['log_interval'] == 0:
                 writer.add_scalar('train/reward', episode_reward, step)
             
             if step > 0:
-                print(f'Episode {episode}: total numsteps: {step}, episode steps: {episode_step}, reward: {episode_reward}')
+                print(f'<Episode {episode}> total numsteps: {step}, episode steps: {episode_step}, reward: {episode_reward}')
             done = False
             episode_reward = 0
             episode_step = 0
@@ -63,19 +64,19 @@ def main():
             
         _, reward, done, _ = env.step(action)
         
-        next_obs = renderer.renders()
-        
-        if episode_step + 1 == env.max_episode_steps or reward == 1.0:
+        distance = np.linalg.norm(env._get_obs()[0:2] - env._target)
+        if episode_step + 1 == env.max_episode_steps or distance <= 0.5:
             done = True
             done_bool = 1
         else:
             done_bool = float(done)
         
+        next_obs = renderer.renders(done)
+        
         episode_reward += reward
         trainer.buffer.add(obs, action, reward, next_obs, done_bool, episode_step)
         
         obs = next_obs
-        save_obs(obs)
         
         episode_step += 1
         

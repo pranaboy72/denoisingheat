@@ -12,6 +12,7 @@ import pandas as pd
 import random
 
 from scorefield.datasets.d4rl import load_environment
+from scorefield.utils.utils import save_obs
 
 def plot2img(fig, remove_margins=True):
     # https://stackoverflow.com/a/35362787/2912349
@@ -54,7 +55,6 @@ class MazeRenderer:
         plt.title(title)
         
         img = plot2img(fig, remove_margins=self._remove_margins)
-        img = cv2.resize(img, (64,64), interpolation=cv2.INTER_CUBIC)
         return img
     
 
@@ -66,8 +66,14 @@ class Maze2dRenderer(MazeRenderer):
         self._remove_margins = False
         self._extent = (0, 1, 1, 0)
         
+    def map_init(self):
+        self.map = super().renders()
+        self.init_x, self.init_y, self.block_x, self.block_y = self.search_init_block(self.map)
+        self.r = 0
+        self.g = 0
+        self.b = 255
         
-    def renders(self):
+    def renders(self, save=False):
         bounds = MAZE_BOUNDS[self.env_name]
         
         if len(bounds) == 2:
@@ -77,9 +83,10 @@ class Maze2dRenderer(MazeRenderer):
         else:
             raise RuntimeError(f'Unrecognized bounds for {self.env_name}: {bounds}')
         
-        img = super().renders()
-        img = self.stamp(img, self.env._target, 'r')
-        img = self.stamp(img, self.env.sim.data.qpos, 'b')
+        img = self.stamp(self.map, self.env._target, 'g')   # goal
+        img = self.stamp(img, self.env.sim.data.qpos, 'a')  # agent
+        if save: save_obs(img)
+        img = cv2.resize(img, (64,64), interpolation=cv2.INTER_AREA)
         img = einops.rearrange(img, 'h w c -> c h w')
         return img
             
@@ -98,11 +105,25 @@ class Maze2dRenderer(MazeRenderer):
                 if block_found: break
             if block_found: break
         return init_x, init_y, block_x, block_y
+    
+    def change_colors(self):
+        if self.b > 0:
+            self.g = min(self.g + 3, 255)
+            self.b = max(self.b - 3, 0)
+        elif self.r < 255:
+            self.r = min(self.r + 3, 255) 
+        else:
+            self.g = max(self.g - 3, 0)
+        # print(self.r, self.g, self.b)
+        return [self.r, self.g, self.b]
             
-    def stamp(self, img, aim, col, stamp_size=2):   
+    
+    def stamp(self, img, aim, col, stamp_size=10):   
         target_point = aim.copy()
-        if col == 'r': col = [255, 0, 0]
-        elif col == 'b': col = [0, 0, 0]
+        if col == 'g': 
+            col = [255, 0, 255]
+        elif col == 'a': 
+            col = self.change_colors()
 
         if isinstance(target_point, list):
             target_point = np.array([target_point])
@@ -110,11 +131,8 @@ class Maze2dRenderer(MazeRenderer):
         if len(target_point.shape) != 2: 
             target_point = np.reshape(target_point, (1,-1))
         
-        init_x, init_y, block_x, block_y= self.search_init_block(img)
-        # print(init_x, init_y, block_x, block_y)
-        
-        target_point[:,0], target_point[:,1] = init_x + block_x + target_point[:,0] * block_x // 2,\
-            init_y + block_y + target_point[:,1] * block_y // 2
+        target_point[:,0], target_point[:,1] = self.init_x + self.block_x + target_point[:,0] * self.block_x // 2,\
+            self.init_y + self.block_y + target_point[:,1] * self.block_y // 2
         
         for x, y in target_point:           
             # Get bounds of the stamp region

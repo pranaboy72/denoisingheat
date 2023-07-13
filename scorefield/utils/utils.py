@@ -21,7 +21,9 @@ def visualize(obs):
     raise
 
 def save_obs(obs):
-    obs = einops.rearrange(obs, 'c h w -> h w c')
-    cv2.resize(obs, (500,500),interpolation=cv2.INTER_NEAREST)
+    if obs.shape[0] == 3:
+        obs = einops.rearrange(obs, 'c h w -> h w c')
+    if obs.shape[0] != 500:
+        cv2.resize(obs, (500,500),interpolation=cv2.INTER_NEAREST)
     plt.imsave('./logs/img.jpg', obs)
     

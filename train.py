@@ -15,7 +15,7 @@ def main():
     sac_config_dir = "/home/junwoo/scorefield/scorefield/configs/sac_args.yaml"
     args = load_config(sac_config_dir)
 
-    set_seed_everywhere(args['seed'])
+    # set_seed_everywhere(args['seed'])
 
     # Env & Renderer
     renderer = Maze2dRenderer(args['env_name'])

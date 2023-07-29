@@ -3,10 +3,10 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.optim import Adam
+import numpy as np
 
 from scorefield.utils.rl_utils import soft_update_params
 from .sac_models import Actor, Critic
-import numpy as np
 
 
 class SAC:

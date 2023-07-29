@@ -18,7 +18,7 @@ def main():
     # set_seed_everywhere(args['seed'])
 
     # Env & Renderer
-    renderer = Maze2dRenderer(args['env_name'])
+    renderer = Maze2dRenderer(args['env_name'], args['image_size'])
     env = renderer.env
 
     # Writer

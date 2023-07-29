@@ -59,12 +59,13 @@ class MazeRenderer:
     
 
 class Maze2dRenderer(MazeRenderer):
-    def __init__(self, env): 
+    def __init__(self, env, img_size): 
         self.env_name = env
         self.env = load_environment(env)
         self._background = self.env.maze_arr == 10
         self._remove_margins = False
         self._extent = (0, 1, 1, 0)
+        self.img_size = img_size
         
     def map_init(self):
         self.map = super().renders()
@@ -86,8 +87,9 @@ class Maze2dRenderer(MazeRenderer):
         img = self.stamp(self.map, self.env._target, 'g')   # goal
         img = self.stamp(img, self.env.sim.data.qpos, 'a')  # agent
         if save: save_obs(img)
-        img = cv2.resize(img, (64,64), interpolation=cv2.INTER_AREA)
+        img = cv2.resize(img, (self.img_size, self.img_size), interpolation=cv2.INTER_LANCZOS4)
         img = einops.rearrange(img, 'h w c -> c h w')
+        # save_obs(img)
         return img
             
     def search_init_block(self,img):

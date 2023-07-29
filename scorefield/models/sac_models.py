@@ -4,7 +4,8 @@ import torch.nn.functional as F
 from torch.distributions import Normal
 import numpy as np
 
-from .encoder import make_encoder
+from .cnn_encoder import make_encoder
+from.denoising_diffusion import Unet, GaussianDiffusion
 
 LOG_FREQ = 10000
 
@@ -50,6 +51,7 @@ class Actor(nn.Module):
         super().__init__()
 
         self.encoder = make_encoder(obs_shape, feature_dim)
+    
 
         self.log_std_min = log_std_min
         self.log_std_max = log_std_max

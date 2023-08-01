@@ -2,8 +2,9 @@
 
 # Env
 env_name: 'maze2d-open-v1'
-image_size: 64
+image_size: 128
 target_point: [1.0, 1.0]
+distractor_num: 10
 
 # Replay Buffer
 replay_buffer_capacity: 100000

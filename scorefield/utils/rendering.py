@@ -12,7 +12,7 @@ import pandas as pd
 import random
 
 from scorefield.datasets.d4rl import load_environment
-from scorefield.utils.utils import save_obs
+from scorefield.utils.utils import save_obs, random_rgb, get_distractors
 
 def plot2img(fig, remove_margins=True):
     # https://stackoverflow.com/a/35362787/2912349
@@ -59,37 +59,40 @@ class MazeRenderer:
     
 
 class Maze2dRenderer(MazeRenderer):
-    def __init__(self, env, img_size): 
-        self.env_name = env
-        self.env = load_environment(env)
+    def __init__(self, args): 
+        self.env_name = args['env_name']
+        self.env = load_environment(args['env_name'])
         self._background = self.env.maze_arr == 10
         self._remove_margins = False
         self._extent = (0, 1, 1, 0)
-        self.img_size = img_size
+        self.img_size = args['image_size']
+        self.dists = args['distractor_num']
+        
+        self.goal_col = [255, 0, 0]
+        self.agent_col = [0, 0, 255]
         
     def map_init(self):
-        self.map = super().renders()
+        self.map = super().renders() # Get the map img
         self.init_x, self.init_y, self.block_x, self.block_y = self.search_init_block(self.map)
         self.r = 0
         self.g = 0
         self.b = 255
         
-    def renders(self, save=False):
-        bounds = MAZE_BOUNDS[self.env_name]
+        self.bounds = MAZE_BOUNDS[self.env_name] # (0, x, 0, x)
         
-        if len(bounds) == 2:
-            _, scale = bounds
-        elif len(bounds) == 4:
-            _, self.iscale, _, self.jscale = bounds
-        else:
-            raise RuntimeError(f'Unrecognized bounds for {self.env_name}: {bounds}')
+        self.distractors = get_distractors(self.env._target, self.bounds, self.dists)
         
-        img = self.stamp(self.map, self.env._target, 'g')   # goal
-        img = self.stamp(img, self.env.sim.data.qpos, 'a')  # agent
+        # self.map_img = self.stamp(self.map, self.env._target, 'goal') # stamp the goal position
+        # self.map_img = self.stamp(self.map_img, self.distractors, 'distractors') # stamp the distractors
+        return self.map
+        
+    def renders(self, save=False):        
+        img = self.stamp(self.map, self.env._target, 'goal')   # goal
+        # img = self.stamp(img, self.env.sim.data.qpos, 'agent')  # agent
         if save: save_obs(img)
         img = cv2.resize(img, (self.img_size, self.img_size), interpolation=cv2.INTER_LANCZOS4)
         img = einops.rearrange(img, 'h w c -> c h w')
-        # save_obs(img)
+        
         return img
             
     def search_init_block(self,img):
@@ -116,37 +119,48 @@ class Maze2dRenderer(MazeRenderer):
             self.r = min(self.r + 3, 255) 
         else:
             self.g = max(self.g - 3, 0)
-        # print(self.r, self.g, self.b)
+        
         return [self.r, self.g, self.b]
             
     
     def stamp(self, img, aim, col, stamp_size=10):   
         target_point = aim.copy()
-        if col == 'g': 
-            col = [255, 0, 255]
-        elif col == 'a': 
-            col = self.change_colors()
+        
+        
+        if col == 'goal': 
+            # col = [255, 0, 255]
+            col = self.goal_col
+        elif col == 'agent': 
+            # col = self.change_colors() # To make the trajectory of the agent
+            col = self.agent_col
+        elif col == 'distractors':
+            cols = random_rgb(self.goal_col, len(target_point))
+
 
         if isinstance(target_point, list):
             target_point = np.array([target_point])
     
-        if len(target_point.shape) != 2: 
+        if len(target_point.shape) == 1: 
             target_point = np.reshape(target_point, (1,-1))
+        elif len(target_point.shape) == 3:
+            target_point = np.reshape(target_point, (-1,2))
         
         target_point[:,0], target_point[:,1] = self.init_x + self.block_x + target_point[:,0] * self.block_x // 2,\
             self.init_y + self.block_y + target_point[:,1] * self.block_y // 2
+            
         
-        for x, y in target_point:           
+        # for i, point in enumerate(target_point):  
             # Get bounds of the stamp region
+        for x, y in target_point:
             start_x = int(x - stamp_size // 2)
             end_x =  int(x + stamp_size // 2)
             start_y =  int(y - stamp_size // 2)
             end_y = int(y + stamp_size // 2)
             
-            # print(f'{start_x} {end_x} {start_y} {end_y}')
-        
-            # Make stamps
+                # Make stamps
+                # if isinstance(col, list):
             img[start_x:end_x, start_y:end_y, :] = col
+            # else:
+            #     img[start_x:end_x, start_y:end_y, :] = cols[i]
             
         return img
-    

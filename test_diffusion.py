@@ -1,5 +1,5 @@
 import torch
-from scorefield.models.denoising_diffusion import Unet, GaussianDiffusion
+from scorefield.models.diffusion_encoder.denoising_diffusion import Unet, GaussianDiffusion
 
 model = Unet(
     dim=64,
@@ -9,7 +9,7 @@ model = Unet(
 
 diffusion = GaussianDiffusion(
     model,
-    image_size=128,
+    image_size=64,
     timesteps=1000,
 )
 

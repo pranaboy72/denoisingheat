@@ -4,7 +4,7 @@ import torch
 from torch.utils.tensorboard import SummaryWriter
 import numpy as np
 
-from scorefield.models.trainer import Trainer
+from trainer import Trainer
 from scorefield.utils.rl_utils import load_config, set_seed_everywhere
 from scorefield.utils.rendering import Maze2dRenderer
 from scorefield.utils.utils import log_num_check

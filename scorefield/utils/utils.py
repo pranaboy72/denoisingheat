@@ -4,6 +4,7 @@ import einops
 import matplotlib.pyplot as plt
 import cv2
 import numpy as np
+import torch
 
 def log_num_check(path):
     log_num = 0
@@ -101,18 +102,24 @@ def gen_goals(bounds, num):
         
         if len(goals) == num:
             return goals
-        
-def random_batch(renderer, map_img, batch_size):
-    rand_goals = gen_goals(renderer.bounds, batch_size)
-    batch = []
+
+def make_batch(renderer, map_img, targets, batch_size):
+    batch=[]
     for i in range(batch_size):
-        img = renderer.stamp(map_img, rand_goals[i],'goal')
+        img = renderer.stamp(map_img, targets[i],'goal')
         if img.shape[1] != renderer.img_size:
             img = cv2.resize(img, (renderer.img_size, renderer.img_size), interpolation=cv2.INTER_LANCZOS4)
         if img.shape[-1] == 3:
             img = einops.rearrange(img, 'h w c -> c h w')
         batch.append(img)
-    return np.array(batch), rand_goals
+    return np.array(batch)
+        
+def random_batch(renderer, map_img, batch_size):
+    rand_goals = gen_goals(renderer.bounds, batch_size)
+    return make_batch(renderer, map_img, rand_goals, batch_size), rand_goals
+
+def eval_batch(renderer, map_img, target, batch_size):
+    return make_batch(renderer, map_img, target, batch_size)
 
 def imshow(img):
     plt.imshow(img)

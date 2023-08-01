@@ -1,0 +1,26 @@
+########  SAC  #######
+
+device: 'cuda'
+
+# Env
+env_name: 'maze2d-open-v1'
+image_size: 64
+distractor_num: 10
+
+# Misc
+seed: 123
+work_dir: '.'
+log_path: './logs/'
+model_path: 'pretrained/'
+
+# Model
+noise_steps: 400
+
+# Train
+train_lr: 0.0001
+epochs: 500000
+batch_size: 16
+
+# Test
+eval_batch_size: 20
+init_state: [4, 4]

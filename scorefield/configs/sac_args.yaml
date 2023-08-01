@@ -2,7 +2,7 @@
 
 # Env
 env_name: 'maze2d-open-v1'
-image_size: 128
+image_size: 64
 target_point: [1.0, 1.0]
 distractor_num: 10
 

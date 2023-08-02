@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 import cv2
 import numpy as np
 import torch
+from PIL import Image, ImageDraw
 
 def log_num_check(path):
     log_num = 0
@@ -124,3 +125,24 @@ def eval_batch(renderer, map_img, target, batch_size):
 def imshow(img):
     plt.imshow(img)
     plt.show()
+
+def prepare_input(img, goal_pos, circle_rad: float=10):
+    assert goal_pos.ndim ==2 and goal_pos.shape[-1] ==2, f"{goal_pos.shape}" # (N,2)
+    
+    W,H = img.width, img.window_height
+    
+    goal_pos_pix = ((1+goal_pos)/2 * torch.tensor([H,W], device=goal_pos.device, dtype=goal_pos.dtype))
+    
+    imgs = []
+    for center in goal_pos_pix.cpu().numpy():
+        img_new = img.copy()
+        w,h = center[1], center[0]
+        
+        draw = ImageDraw.Draw(img_new)
+        draw.ellipse((w-circle_rad, h-circle_rad, w+circle_rad, h+circle_rad), fill = 'red', outline='red')
+        
+        img_np = np.array(img_new)[...,:3] / 255
+        imgs.append(img_np)
+        
+    imgs = np.stack(imgs, axis=0)
+    return torch.tensor(imgs, dtype=goal_pos.dtype, device=goal_pos.device).permute(0, 3, 1, 2)

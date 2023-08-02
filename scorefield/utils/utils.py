@@ -151,25 +151,4 @@ def prepare_input(args, img, goal_pos, circle_rad: float=5):
         
     imgs = np.stack(imgs, axis=0)
     return torch.tensor(imgs, dtype=goal_pos.dtype, device=goal_pos.device).permute(0, 3, 1, 2)
-
-def search_limit(img):
-    img = img.copy()
-    init_found=False
-    block_found=False
-    
-    if isinstance(img, PIL.PngImagePlugin.PngImageFile):
-        img = np.array(img)
-        
-    for i in range(img[...,0].shape[0]):
-        for j in range(img[...,1].shape[1]):
-            if img[i,j,0] != 255 and init_found is False:
-                init_x = i
-                init_y = j
-                init_found = True
-            if img[i-1, j, 0] != 255 and img[i,j-1,0] != 255 and img[i,j,0] == 255 and init_found:
-                block_x = i - init_x
-                block_y = j - init_y
-            if block_found: break
-        if block_found: break
-    return init_x, init_y, block_x, block_y
-        
+ 

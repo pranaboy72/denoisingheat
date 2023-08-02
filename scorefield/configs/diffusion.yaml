@@ -15,12 +15,12 @@ log_path: './logs/'
 model_path: 'pretrained/'
 
 # Model
-noise_steps: 400
-beta: 0.0001 
+noise_steps: 300
+beta: 0.0001
 
 # Train
 epsilon: 0.00002
-train_lr: 0.001
+train_lr: 0.0001
 epochs: 200000
 batch_size: 16
 

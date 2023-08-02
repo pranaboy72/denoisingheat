@@ -28,10 +28,4 @@ def bilinear_interpolate(fmap, pos):
 
     # Remove the spatial dimensions and return the interpolated feature vector
     return interpolated_value.squeeze(-1).squeeze(-1)
-
-def compute_positions_based_on_time(t, H=256, W=256):
-        # Modify this function to calculate the position based on time
-        x = ((t % W) / W) * 2 - 1
-        y = ((t // H) / H) * 2 - 1
-        pos = torch.stack([x, y], dim=-1)  # Combine x and y to form position tensor
-        return pos
+   

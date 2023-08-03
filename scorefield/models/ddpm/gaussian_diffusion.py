@@ -29,7 +29,7 @@ class Diffusion(object):
         return sqrt_alpha_hat * x0 + sqrt_one_minus_alpha_hat * noise, noise
 
     def sample_timesteps(self, n):
-        return torch.randint(low=0, high=self.noise_steps, size=(n,)).long()
+        return torch.randint(low=1, high=self.noise_steps, size=(n,)).long()
     
     def sample(self, model, n):
         model.eval()
@@ -46,6 +46,24 @@ class Diffusion(object):
                 else:
                     noise = torch.zeros_like(x)
                 x = 1 / torch.sqrt(alpha) * (x - ((1 - alpha) / (torch.sqrt(1 - alpha_hat))) \
+                    * predicted_noise) + torch.sqrt(beta) * noise
+        model.train()
+        
+        return x
+
+    def sample_onestep(self, model, obs, x, t):
+        model.eval()
+        with torch.no_grad():
+            predicted_noise = model(obs, x, t)
+            alpha = self.alpha[t]
+            alpha_hat = self.alpha_hat[t]
+            beta = self.beta[t]
+            if t > 1:
+                noise = torch.randn_like(x)
+            else:
+                noise = torch.zeros_like(x)
+            
+            x = 1 / torch.sqrt(alpha) * (x - ((1 - alpha) / (torch.sqrt(1 - alpha_hat))) \
                     * predicted_noise) + torch.sqrt(beta) * noise
         model.train()
         

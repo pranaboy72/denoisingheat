@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 import cv2
 import numpy as np
 import torch
+from torchvision import transforms
 import PIL
 from PIL import Image, ImageDraw
 
@@ -152,3 +153,39 @@ def prepare_input(args, img, goal_pos, circle_rad: float=5):
     imgs = np.stack(imgs, axis=0)
     return torch.tensor(imgs, dtype=goal_pos.dtype, device=goal_pos.device).permute(0, 3, 1, 2)
  
+def show_tensor_image(image):
+    reverse_transforms = transforms.Compose([
+        transforms.Lambda(lambda t: (t+1) / 2),
+        transforms.Lambda(lambda t: t.permute(1, 2, 0)),
+        transforms.Lambda(lambda t: t * 255.),
+        transforms.Lambda(lambda t: t.numpy().astype(np.uint8)),
+        transforms.Lambda.ToPILImage(),
+    ])
+    
+    if len(image.shape) == 4:
+        image = image[0,:,:,:]
+    plt.imshow(reverse_transforms(image))
+    
+@torch.no_grad()
+def sample_plot_image(model, diffusion, map_img, device='cuda'):
+    plt.figure(figsize=(15,15))
+    plt.axis('off')
+    num_images = 10
+    T = diffusion.noise_steps
+    stepsize = int(T/num_images)
+    img_size = np.array(map_img).shape[1]
+   
+    x_trace = []
+    x = torch.tensor([-0.5, 0.5]*20, device=device, dtype=torch.float32)
+
+    for i in range(0, T):
+        t = torch.full((1,), i, device=device, dtype=torch.long)
+        obs = prepare_input(img_size, map_img, goal_pos=x)
+        x = diffusion.sample_onestep(model, obs, x, t)
+        
+        obs = prepare_input(img_size, map_img, goal_pos=x)
+        if i % stepsize == 0:
+            plt.subplot(1, num_images, int(i/stepsize)+1)
+            show_tensor_image(obs.detach().cpu())
+            
+    plt.show()

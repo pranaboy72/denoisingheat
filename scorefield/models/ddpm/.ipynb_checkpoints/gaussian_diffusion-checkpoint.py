@@ -18,20 +18,18 @@ class Diffusion(object):
     def prepare_noise_schedule(self):
         return torch.linspace(self.beta_start, self.beta_end, self.noise_steps)
     
-    def noise_state(self, x, t):
+    def forward_diffusion(self, x0, t):
         """
             x_t = sqrt(alpha_hat) * x_0 + sqrt(1-alpha_hat) * epsilon
         """
+        noise = torch.randn_like(x0)
         sqrt_alpha_hat = torch.sqrt(self.alpha_hat[t]).unsqueeze(-1)
         sqrt_one_minus_alpha_hat = torch.sqrt(1. - self.alpha_hat[t]).unsqueeze(-1)
-        epsilon =  torch.randn_like(x)
         
-        x_t = sqrt_alpha_hat * x + sqrt_one_minus_alpha_hat * epsilon
-        
-        return x_t
+        return sqrt_alpha_hat * x0 + sqrt_one_minus_alpha_hat * noise, noise
 
     def sample_timesteps(self, n):
-        return torch.randint(low=1, high=self.noise_steps, size=(n,))
+        return torch.randint(low=1, high=self.noise_steps, size=(n,)).long()
     
     def sample(self, model, n):
         model.eval()
@@ -48,6 +46,24 @@ class Diffusion(object):
                 else:
                     noise = torch.zeros_like(x)
                 x = 1 / torch.sqrt(alpha) * (x - ((1 - alpha) / (torch.sqrt(1 - alpha_hat))) \
+                    * predicted_noise) + torch.sqrt(beta) * noise
+        model.train()
+        
+        return x
+
+    def sample_onestep(self, model, obs, x, t):
+        model.eval()
+        with torch.no_grad():
+            predicted_noise = model(obs, x, t)
+            alpha = self.alpha[t]
+            alpha_hat = self.alpha_hat[t]
+            beta = self.beta[t]
+            if t > 1:
+                noise = torch.randn_like(x)
+            else:
+                noise = torch.zeros_like(x)
+            
+            x = 1 / torch.sqrt(alpha) * (x - ((1 - alpha) / (torch.sqrt(1 - alpha_hat))) \
                     * predicted_noise) + torch.sqrt(beta) * noise
         model.train()
         

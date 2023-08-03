@@ -83,28 +83,13 @@ def get_distractors(goal, bounds, num):
         if len(distractors) == num:
             return distractors
         
-def gen_goals(bounds, num):
-    goals = []
-    fail = False
-    assert len(bounds) == 4
-    
-    while True:    
-        x = np.random.uniform(bounds[0], bounds[1])
-        y = np.random.uniform(bounds[2], bounds[3])
+def gen_goals(bounds, batch_size, device='cuda'):
+    assert len(bounds) == 4, f'Weird map bound: {bounds}'
 
-        if len(goals) == 0:
-            goals.append([x,y])
-        else:        
-            for i in range(len(goals)):
-                if get_distance([x,y], goals[i]) < 1.:
-                    fail=True
-                    break
-            if not fail:
-                goals.append([x,y])
-            fail=False
-        
-        if len(goals) == num:
-            return goals
+    x = bounds[0] + (bounds[1] - bounds[0]) * torch.rand((batch_size, 1), dtype=torch.float32, device=device)
+    y = bounds[2] + (bounds[3] - bounds[2]) * torch.rand((batch_size, 1), dtype=torch.float32, device=device)
+    
+    return torch.cat((x ,y), dim=1)
 
 def make_batch(renderer, map_img, targets, batch_size):
     batch=[]
@@ -128,11 +113,11 @@ def imshow(img):
     plt.imshow(img)
     plt.show()
 
-def prepare_input(args, img, goal_pos, circle_rad: float=5):
+def prepare_input(img, img_size, goal_pos, circle_rad: float=5):
     assert goal_pos.ndim ==2 and goal_pos.shape[-1] ==2, f"{goal_pos.shape}" # (N,2)
     
-    if img.height != args['image_size']:
-        new_size = (args['image_size'], args['image_size'])
+    if img.height != img_size:
+        new_size = (img_size, img_size)
         img = img.resize(new_size, Image.BICUBIC)
     
     W,H = img.width, img.height
@@ -189,3 +174,14 @@ def sample_plot_image(model, diffusion, map_img, device='cuda'):
             show_tensor_image(obs.detach().cpu())
             
     plt.show()
+
+def draw_samples(img, goal_pos, circle_rad:float=2):
+    W, H = img.width, img.height
+    
+    goal_pos_pix = ((1+goal_pos)/2 * torch.tensor([H,W], device=goal_pos.device, dtype=goal_pos.dtype))
+    img_new = img.copy()
+    draw = ImageDraw.Draw(img_new)
+    for center in goal_pos_pix.cpu().numpy():
+        w,h = center[1],center[0]
+        draw.ellipse((w-circle_rad, h-circle_rad, w+circle_rad, h+circle_rad), fill = 'red', outline='red')
+    return img_new

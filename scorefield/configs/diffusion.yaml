@@ -6,6 +6,7 @@ device: 'cuda'
 env_name: 'maze2d-open-v1'
 image_size: 128
 distractor_num: 10
+bounds: [-0.7, 0.7, -0.7, 0.7]
 
 # Misc
 seed: 123
@@ -15,12 +16,14 @@ model_path: 'pretrained/'
 
 # Model
 noise_steps: 300
+beta_start: 0.00001
+beta_end: 0.001
 
 # Train
 epsilon: 0.00002
 train_lr: 0.0002
 epochs: 3000
-batch_size: 24
+batch_size: 8
 
 # Eval
 eval_batch_size: 20

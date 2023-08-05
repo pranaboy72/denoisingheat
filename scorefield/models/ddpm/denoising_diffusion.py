@@ -1055,3 +1055,21 @@ class Trainer(object):
                 pbar.update(1)
 
         accelerator.print('training complete')
+        
+        
+class Regressor(nn.Module):
+    def __init__(self, image_size, feature_dim:int=32) -> None:
+        super().__init__()
+        self.img_size = image_size
+        self.feature_dim = feature_dim
+        
+    def forward(self, obs):
+        """
+        Args:
+            obs(_type_): [B, 3, N, N]
+        
+        Returns:
+            goal embedding: [B, F]
+        """
+        
+        

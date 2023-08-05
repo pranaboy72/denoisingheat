@@ -4,8 +4,9 @@ from tqdm import tqdm
 
 
 class Diffusion(object):
-    def __init__(self, input_size, noise_steps=1000, beta_start=1e-4, beta_end=0.02, device="cuda"):
+    def __init__(self, bounds, input_size, noise_steps=1000, beta_start=1e-4, beta_end=0.02, device="cuda"):
         self.device = device
+        self.bounds = bounds
         self.input_size = input_size
         self.noise_steps = noise_steps
         self.beta_start = beta_start
@@ -22,11 +23,21 @@ class Diffusion(object):
         """
             x_t = sqrt(alpha_hat) * x_0 + sqrt(1-alpha_hat) * epsilon
         """
-        noise = torch.randn_like(x0)
-        sqrt_alpha_hat = torch.sqrt(self.alpha_hat[t]).unsqueeze(-1)
-        sqrt_one_minus_alpha_hat = torch.sqrt(1. - self.alpha_hat[t]).unsqueeze(-1)
+        in_bounds = False
+        while not in_bounds:
+            noise = torch.randn_like(x0)
+            sqrt_alpha_hat = torch.sqrt(self.alpha_hat[t]).unsqueeze(-1)
+            sqrt_one_minus_alpha_hat = torch.sqrt(1. - self.alpha_hat[t]).unsqueeze(-1)
+            x_t = sqrt_alpha_hat * x0 + sqrt_one_minus_alpha_hat * noise
+            
+            for i in range(len(x0)):
+                if ((x_t[i][0] < self.bounds[0]) | (x_t[i][0] > self.bounds[1]) | \
+                    (x_t[i][1] < self.bounds[2]) | (x_t[i][1] > self.bounds[3])).any():
+                    break
+            else:
+                in_bounds = True
         
-        return sqrt_alpha_hat * x0 + sqrt_one_minus_alpha_hat * noise, noise
+        return x_t, noise
 
     def sample_timesteps(self, n):
         return torch.randint(low=1, high=self.noise_steps, size=(n,)).long()

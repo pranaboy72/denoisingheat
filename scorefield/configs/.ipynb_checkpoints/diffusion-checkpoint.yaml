@@ -7,7 +7,7 @@ env_name: 'maze2d-open-v1'
 image_size: 128
 distractor_num: 10
 bounds: [-0.7, 0.7, -0.7, 0.7]
-goal_num: 4
+goal_num: 3
 
 # Misc
 seed: 123
@@ -16,13 +16,14 @@ log_path: './logs/'
 model_path: 'pretrained/'
 
 # Model
-noise_steps: 400
+noise_steps: 500
+beta_start: 0.00001
+beta_end: 0.005
 
 # Train
-epsilon: 0.00002
-train_lr: 0.0002
-epochs: 1500
-batch_size: 16
+train_lr: 0.0001
+epochs: 1000
+batch_size: 24
 
 # Eval
 eval_batch_size: 10

@@ -9,9 +9,7 @@ opencv==4.6.0
 packaging==23.1
 pandas==1.5.2
 Pillow==9.2.0
-Pillow==10.0.0
 pytorch_fid==0.3.0
-PyYAML==6.0.1
 PyYAML==6.0.1
 torch==1.14.0a0+410ce96
 torchvision==0.15.0a0

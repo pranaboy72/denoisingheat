@@ -9,17 +9,18 @@ from torchvision import transforms
 import PIL
 from PIL import Image, ImageDraw
 import requests
+from typing import Optional, Union
+import random
 
 
 def log_num_check(path):
     log_num = 0
     file_type = path.split('.')[-1]
     while True:
-        new_path = path + '_' + str(log_num) + file_type
+        new_path = path[:-3] + '_' + str(log_num) + '.' + file_type
         check = os.path.exists(new_path)
         if check:
             log_num += 1
-            continue
         else:
             return new_path
     
@@ -87,18 +88,34 @@ def get_distractors(goal, bounds, num):
             return distractors
         
         
-def gen_goals(bounds, n, dist:float=1., device='cuda'):
-    assert n > 1, f'n: {n}'
-    assert len(bounds) == 4, f'Weird map bound: {bounds}'
-    while True:
-        x = bounds[0] + (bounds[1] - bounds[0]) * torch.rand((n, 1), dtype=torch.float32, device=device)
-        y = bounds[2] + (bounds[3] - bounds[2]) * torch.rand((n, 1), dtype=torch.float32, device=device)
+def gen_goals(bounds, n:Union[tuple, int], dist:Optional[float]=None, device='cuda'):
+    assert len(bounds) == 4, f'Unappropriate map bound: {bounds}'
+    if isinstance(n, int):
+        M = 1
+        N = n
+    else:
+        M, N = n
+        
+    goals = []
+    for m in range(M):
+        while True:
+            x = bounds[0] + (bounds[1] - bounds[0]) * torch.rand((N, 1), dtype=torch.float32, device=device)
+            y = bounds[2] + (bounds[3] - bounds[2]) * torch.rand((N, 1), dtype=torch.float32, device=device)
 
-        for i in range(n-1):
-            if get_distance([x[i],y[i]], [x[i+1], y[i+1]]) < dist:
+            if dist is None:
+                goals.append(torch.cat((x, y), dim=1))
                 break
-        else:
-            return torch.cat((x, y), dim=1)
+            else:
+                for i in range(N-1):
+                    if get_distance([x[i],y[i]], [x[i+1], y[i+1]]) < dist:
+                        break
+                else:
+                    goals.append(torch.cat((x, y), dim=1))
+                    break
+                    
+    if M == 1:
+        return torch.stack(goals).squeeze(0)
+    return torch.stack(goals)
 
 def make_batch(renderer, map_img, targets, batch_size):
     batch=[]
@@ -244,7 +261,7 @@ def overlay_image(img, img_size, objs, pos):
     for i in range(len(objs)):
         objs[i] = objs[i].resize((W // 5, H // 5), Image.LANCZOS)
     
-    pos_pix = ((1+pos)/2 * torch.tensor([H, W], device=pos.device, dtype=pos.dtype))
+    pos_pix = ((1+pos)/2 * torch.tensor([H, W], device=pos.device, dtype=pos.dtype)).squeeze(0)
     
     imgs = []
     for i, center in enumerate(pos_pix.cpu().numpy()):
@@ -261,64 +278,73 @@ def overlay_image(img, img_size, objs, pos):
     return torch.tensor(imgs, dtype=pos.dtype, device=pos.device).permute(0, 3, 1, 2)
 
 
-def overlay_images(img, img_size, objs, pos):
+def overlay_images(img, img_size, objs, pos, n):
+    obs = objs.copy()
     if img.height != img_size:
         new_size = (img_size, img_size)
         img = img.resize(new_size, Image.ANTIALIAS)
-        
+    
+    while len(obs) != n:
+        idx = random.randrange(len(obs))
+        obs.pop(idx)
+    
     W, H = img.size
     
-    for i in range(len(objs)):
-        objs[i] = objs[i].resize((W // 5, H // 5), Image.LANCZOS)
+    for i in range(len(obs)):
+        obs[i] = obs[i].resize((W // 5, H // 5), Image.LANCZOS)
         
     pos_pix = ((1+pos)/2 * torch.tensor([H, W], device=pos.device, dtype=pos.dtype))
     
     imgs = []
     for i, center in enumerate(pos_pix.cpu().numpy()):
-        obj_num = i % len(objs)
+        obj_num = i % len(obs)
         if obj_num == 0: bg = img.copy()
         c0, c1 = round(center[1]), round(center[0])
-        w, h = objs[obj_num].size
-        bg.paste(objs[obj_num], (c0 - w//2, c1 - h//2), objs[obj_num])
+        w, h = obs[obj_num].size
+        bg.paste(obs[obj_num], (c0 - w//2, c1 - h//2), obs[obj_num])
         
-        if obj_num == len(objs)-1:
+        if obj_num == len(obs)-1:
             img_np = np.array(bg)[...,:3] / 255
             imgs.append(img_np)
     imgs = np.stack(imgs, axis=0)
     
     return torch.tensor(imgs, dtype=pos.dtype, device=pos.device).permute(0, 3, 1, 2)
     
-
+    
 def overlay_goal_agent(bg, obj, goal, agent, circle_rad:float=3):
     bg = bg.copy()
     W, H = bg.size
-    obj = obj.resize((W // 5, H // 5), Image.LANCZOS)
+    
+    obj = [ob.resize((W // 5, H // 5), Image.LANCZOS) for ob in obj]
     
     goal_pix = ((1+goal)/2 * torch.tensor([H, W], device=goal.device, dtype=goal.dtype))
-    agent_pix = ((1+agent)/2 * torch.tensor([H, W], device=agent.device, dtype=agent.dtype))
+    agent_pix = ((1 + agent) / 2 * torch.tensor([H, W], device=agent.device, dtype=agent.dtype).reshape(1, 1, 2))
+#     agent_pix = ((1+agent)/2 * torch.tensor([H, W], device=agent.device, dtype=agent.dtype))
 
-    if goal_pix.dim() == 1:
-        goal_pix = goal_pix.unsqueeze(0)
-    if agent_pix.dim() == 1:
-        agent_pix = agent_pix.unsqueeze(0)
+    assert goal_pix.dim() == 2  # (B, 2)
+    assert agent_pix.dim() == 3  # (B, N, 2)
 
-    for center in goal_pix.cpu().numpy():
+    bgs = []
+    for i, center in enumerate(goal_pix.cpu().numpy()):
         c0, c1 = round(center[1]),round(center[0])
-        w, h = obj.size
-        bg.paste(obj, (c0 - w//2, c1 - h//2), obj)
+        w, h = obj[i].size 
+        bg_copy = bg.copy()
+        bg_copy.paste(obj[i], (c0 - w//2, c1 - h//2), obj[i])
+        bgs.append(bg_copy)
         
-    draw = ImageDraw.Draw(bg)
-    for center in agent_pix.cpu().numpy():
-        c0, c1 = round(center[1]), round(center[0])
-        draw.ellipse((c0-circle_rad, c1-circle_rad, c0+circle_rad, c1+circle_rad), fill = 'red', outline='red')
+    draws = [ImageDraw.Draw(bg) for bg in bgs]
+    for i, center in enumerate(agent_pix.cpu().numpy()):
+        for cen in center:
+            c0, c1 = round(cen[1]), round(cen[0])
+            draws[i].ellipse((c0-circle_rad, c1-circle_rad, c0+circle_rad, c1+circle_rad), fill = 'red', outline='red')
         
-    return bg
+    return bgs
     
 def overlay_goals_agent(bg, obj, goal, agent, circle_rad:float=5):
     bg = bg.copy()
     W, H = bg.size
-    for i in range(len(obj)):
-        obj[i] = obj[i].resize((W // 5, H // 5), Image.LANCZOS)
+    
+    obj = [ob.resize((W // 5, H // 5), Image.LANCZOS) for ob in obj]
     
     goals_pix = ((1+goal)/2 * torch.tensor([[H, W]]*goal.size(0), device=goal.device, dtype=goal.dtype))
     agent_pix = ((1+agent)/2 * torch.tensor([H, W], device=agent.device, dtype=agent.dtype))
@@ -332,6 +358,31 @@ def overlay_goals_agent(bg, obj, goal, agent, circle_rad:float=5):
         bg.paste(obj[i], (c0 - w//2, c1 - h//2), obj[i])
         
     draw = ImageDraw.Draw(bg)
+    for center in agent_pix.cpu().numpy():
+        for cen in center:
+            c0, c1 = round(cen[1]), round(cen[0])
+            draw.ellipse((c0-circle_rad, c1-circle_rad, c0+circle_rad, c1+circle_rad), fill = 'red', outline='red')
+        
+    return bg
+
+def overlay_goals_agents(bg, obj, goal, agent, circle_rad:float=5):
+    bg = bg.copy()
+    W, H = bg.size
+    for i in range(len(obj)):
+        obj[i] = obj[i].resize((W // 5, H // 5), Image.LANCZOS)
+        
+    agent = agent.squeeze(1)
+    
+    goals_pix = ((1+goal)/2 * torch.tensor([[H, W]]*goal.size(0), device=goal.device, dtype=goal.dtype))
+    agent_pix = ((1+agent)/2 * torch.tensor([[H, W]]*agent.size(0), device=agent.device, dtype=agent.dtype))
+
+    for i, center in enumerate(goals_pix.cpu().numpy()):
+        c0, c1 = round(center[1]),round(center[0])
+        w, h = obj[i].size
+        bg.paste(obj[i], (c0 - w//2, c1 - h//2), obj[i])
+        
+    draw = ImageDraw.Draw(bg)
+    
     for center in agent_pix.cpu().numpy():
         c0, c1 = round(center[1]), round(center[0])
         draw.ellipse((c0-circle_rad, c1-circle_rad, c0+circle_rad, c1+circle_rad), fill = 'red', outline='red')

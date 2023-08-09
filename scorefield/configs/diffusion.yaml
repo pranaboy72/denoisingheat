@@ -6,7 +6,8 @@ device: 'cuda'
 env_name: 'maze2d-open-v1'
 image_size: 128
 distractor_num: 10
-bounds: [-0.7, 0.7, -0.7, 0.7]
+goal_bounds: [-0.8, 0.8, -0.8, 0.8]
+agent_bounds: [-1.,1.,-1.,1.]
 goal_num: 3
 
 # Misc
@@ -22,9 +23,8 @@ beta_end: 0.005
 
 # Train
 train_lr: 0.0001
-epochs: 1000
+epochs: 4000
 batch_size: 24
 
 # Eval
-eval_batch_size: 10
-eval_init_state: [0., 0.]
+eval_samples: 1000

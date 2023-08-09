@@ -11,8 +11,6 @@ class Diffusion(object):
         self.beta_start = beta_start
         self.beta_end = beta_end
         
-        self.bounds = (-1,1)
-        
         self.beta = self.prepare_noise_schedule().to(self.device)
         self.alpha = 1. - self.beta
         self.alpha_hat = torch.cumprod(self.alpha, dim=0)
@@ -25,8 +23,10 @@ class Diffusion(object):
             x_t = sqrt(alpha_hat) * x_0 + sqrt(1-alpha_hat) * epsilon
         """
         noise = torch.randn_like(x0)
-        sqrt_alpha_hat = torch.sqrt(self.alpha_hat[t]).unsqueeze(-1)
-        sqrt_one_minus_alpha_hat = torch.sqrt(1. - self.alpha_hat[t]).unsqueeze(-1)
+        # sqrt_alpha_hat = torch.sqrt(self.alpha_hat[t]).unsqueeze(-1)
+        # sqrt_one_minus_alpha_hat = torch.sqrt(1. - self.alpha_hat[t]).unsqueeze(-1)
+        sqrt_alpha_hat = torch.sqrt(self.alpha_hat[t]).view(-1, 1, 1)
+        sqrt_one_minus_alpha_hat = torch.sqrt(1. - self.alpha_hat[t]).view(-1, 1, 1)
         x_t = sqrt_alpha_hat * x0 + sqrt_one_minus_alpha_hat * noise
 
         return x_t, noise

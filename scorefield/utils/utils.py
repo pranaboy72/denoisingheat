@@ -106,10 +106,15 @@ def gen_goals(bounds, n:Union[tuple, int], dist:Optional[float]=None, device='cu
                 goals.append(torch.cat((x, y), dim=1))
                 break
             else:
-                for i in range(N-1):
-                    if get_distance([x[i],y[i]], [x[i+1], y[i+1]]) < dist:
+                valid=True
+                for i in range(N):
+                    for j in range(i+1, N):
+                        if get_distance([x[i],y[i]], [x[j], y[j]]) < dist:
+                            valid = False
+                            break
+                    if not valid:
                         break
-                else:
+                if valid:
                     goals.append(torch.cat((x, y), dim=1))
                     break
                     
@@ -278,13 +283,13 @@ def overlay_image(img, img_size, objs, pos):
     return torch.tensor(imgs, dtype=pos.dtype, device=pos.device).permute(0, 3, 1, 2)
 
 
-def overlay_images(img, img_size, objs, pos, n):
+def overlay_images(img, img_size, objs, pos, n:Optional[list]=None):
     obs = objs.copy()
     if img.height != img_size:
         new_size = (img_size, img_size)
         img = img.resize(new_size, Image.ANTIALIAS)
     
-    while len(obs) != n:
+    while len(obs) != n and n is not None:
         idx = random.randrange(len(obs))
         obs.pop(idx)
     

@@ -23,7 +23,7 @@ beta_end: 0.005
 
 # Train
 train_lr: 0.0001
-epochs: 4000
+epochs: 3000
 batch_size: 24
 
 # Eval

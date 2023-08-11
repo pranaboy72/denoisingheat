@@ -256,7 +256,10 @@ def get_url_pretrained(url, pt):
     model_state_dict = torch.load(pt)
     return model_state_dict
         
-def overlay_image(img, img_size, objs, pos):
+def overlay_goal(img, img_size, objs, pos):
+    assert len(pos) % len(objs) == 0
+    n = len(pos) // len(objs) 
+    
     if img.height != img_size:
         new_size = (img_size, img_size)
         img = img.resize(new_size, Image.LANCZOS)
@@ -266,22 +269,69 @@ def overlay_image(img, img_size, objs, pos):
     for i in range(len(objs)):
         objs[i] = objs[i].resize((W // 5, H // 5), Image.LANCZOS)
     
-    pos_pix = ((1+pos)/2 * torch.tensor([H, W], device=pos.device, dtype=pos.dtype)).squeeze(0)
+    pos_pix = ((1+pos)/2 * torch.tensor([H, W], device=pos.device, dtype=pos.dtype)).squeeze(0)    
     
     imgs = []
     for i, center in enumerate(pos_pix.cpu().numpy()):
-        bg = img.copy()
-        obj_num = i % len(objs)
-        c0, c1 = round(center[1]),round(center[0])
-        w, h = objs[obj_num].size
-        bg.paste(objs[obj_num], (c0 - w//2, c1 - h//2), objs[obj_num])
-        img_np = np.array(bg)[...,:3] / 255
-        imgs.append(img_np)
+        for cen in center:
+            bg = img.copy()
+            obj_num = i // n
+            c0, c1 = round(cen[1]),round(cen[0])
+            w, h = objs[obj_num].size
+            bg.paste(objs[obj_num], (c0 - w//2, c1 - h//2), objs[obj_num])
+            img_np = np.array(bg)[...,:3] / 255
+            imgs.append(img_np)
         
     imgs = np.stack(imgs, axis=0)
     
     return torch.tensor(imgs, dtype=pos.dtype, device=pos.device).permute(0, 3, 1, 2)
 
+def overlay_multiple(img, img_size, objs, pos, primary_index, num_additional_objs):
+    primary_obj_id = primary_index // (len(pos) // len(objs))
+    bg = img.copy()
+    
+    # Overlay primary object at its position
+    img_with_primary = overlay_goal(bg, img_size, [objs[primary_obj_id]], pos[primary_index].unsqueeze(0).unsqueeze(1))
+    
+    # List of all object indices except the primary
+    other_obj_ids = list(range(len(objs)))
+    other_obj_ids.remove(primary_obj_id)
+
+    # Randomly select 'num_additional_objs' without replacement
+    chosen_obj_ids = random.sample(other_obj_ids, num_additional_objs)
+
+    for obj_id in chosen_obj_ids:
+        valid_positions = list(range(obj_id * (len(pos) // len(objs)), (obj_id + 1) * (len(pos) // len(objs))))
+        chosen_position = random.choice(valid_positions)
+
+        # Convert the tensor image back to PIL for pasting the next object
+        bg = Image.fromarray((img_with_primary.squeeze(0).permute(1, 2, 0).cpu().numpy() * 255).astype(np.uint8))
+        img_with_primary = overlay_goal(bg, img_size, [objs[obj_id]], pos[chosen_position].unsqueeze(0).unsqueeze(1))
+    
+    return img_with_primary, pos[primary_index].expand(img_with_primary.size(0), 1, 2)
+
+
+def combine_objects(img, img_size, objs, pos):
+    n_objs = len(objs)
+    n = len(pos) // n_objs
+
+    all_images = []
+    all_positions = []
+
+    # 1. Overlay each object based on pos (single object per image)
+    for i in range(len(pos)):
+        img_single = overlay_goal(img, img_size, [objs[i // n]], pos[i].unsqueeze(0).unsqueeze(1))
+        all_images.append(img_single)
+        all_positions.append(pos[i].expand(img_single.size(0), 1, 2))
+
+    # 2, 3,..., obj_num. Overlay the primary object + 1, 2,..., obj_num-1 other objects for each position in `pos`
+    for main_obj_index in range(len(pos)):
+        for j in range(1, n_objs):  # from 1 to obj_num - 1
+            combined_img, combined_pos = overlay_multiple(img, img_size, objs, pos, main_obj_index, j)
+            all_images.append(combined_img)
+            all_positions.append(combined_pos)
+
+    return torch.cat(all_images, 0), torch.cat(all_positions, 0)
 
 def overlay_images(img, img_size, objs, pos, n:Optional[list]=None):
     obs = objs.copy()

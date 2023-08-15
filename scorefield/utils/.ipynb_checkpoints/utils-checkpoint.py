@@ -63,32 +63,33 @@ def random_rgb(goal, num):
 def get_distance(a, b):
     return torch.sqrt((a[0] - b[0])**2 + (a[1] - b[1])**2)
 
-def get_distractors(goal, bounds, num):
-    distractors = []
+def gen_obstacles(img, pos):
+    assert len(pos[0]) == 4
     
-    assert len(bounds) == 4
+    draw = ImageDraw.Draw(img)
+    
+    for p in pos:
+        top_left = (p[0], p[1])
+        bottom_right = (p[2], p[3])
 
-    while True:
-        x = np.random.uniform(bounds[0], bounds[1])
-        y = np.random.uniform(bounds[2], bounds[3])
-        
-        if get_distance([x,y], goal) < 1.:
-            continue
-        
-        if len(distractors) == 0:
-            distractors.append([x,y])
-        else:
-            for i in range(len(distractors)):
-                distance = get_distance([x,y], distractors[i])
-                if distance < 1.:
-                    continue
-            distractors.append([x,y])
-            
-        if len(distractors) == num:
-            return distractors
-        
-        
-def gen_goals(bounds, n:Union[tuple, int], dist:Optional[float]=None, device='cuda'):
+        draw.rectangle([top_left, bottom_right], fill='black')
+    return img
+
+def gen_obstacle_masks(batch_size, bg_size, img_size, pos):
+    masks = torch.zeros((batch_size, img_size, img_size), dtype=torch.bool, device='cuda')
+    
+    for p in pos:
+        masks[:, int(p[1]*img_size/bg_size[1]):int(p[3]*img_size/bg_size[1]), \
+              int(p[0]*img_size/bg_size[0]):int(p[2]*img_size/bg_size[0])] = 1
+    return masks
+    
+def gen_goals(
+    bounds, 
+    n:Union[tuple, int], 
+    dist:Optional[float]=None, 
+    obstacles:Optional[np.array]=None,
+    device='cuda'
+):
     assert len(bounds) == 4, f'Unappropriate map bound: {bounds}'
     if isinstance(n, int):
         M = 1
@@ -376,16 +377,17 @@ def overlay_goal_agent(bg, obj, goal, agent, circle_rad:float=3):
     agent_pix = ((1 + agent) / 2 * torch.tensor([H, W], device=agent.device, dtype=agent.dtype).reshape(1, 1, 2))
 #     agent_pix = ((1+agent)/2 * torch.tensor([H, W], device=agent.device, dtype=agent.dtype))
 
-    assert goal_pix.dim() == 2  # (B, 2)
+    assert goal_pix.dim() == 3  # (B, 1, 2)
     assert agent_pix.dim() == 3  # (B, N, 2)
 
     bgs = []
     for i, center in enumerate(goal_pix.cpu().numpy()):
-        c0, c1 = round(center[1]),round(center[0])
-        w, h = obj[i].size 
-        bg_copy = bg.copy()
-        bg_copy.paste(obj[i], (c0 - w//2, c1 - h//2), obj[i])
-        bgs.append(bg_copy)
+        for cen in center:
+            c0, c1 = round(cen[1]),round(cen[0])
+            w, h = obj[i].size 
+            bg_copy = bg.copy()
+            bg_copy.paste(obj[i], (c0 - w//2, c1 - h//2), obj[i])
+            bgs.append(bg_copy)
         
     draws = [ImageDraw.Draw(bg) for bg in bgs]
     for i, center in enumerate(agent_pix.cpu().numpy()):

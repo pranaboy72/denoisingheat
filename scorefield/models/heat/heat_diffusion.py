@@ -2,13 +2,14 @@ import torch
 import torch.nn.functional as F
 import numpy as np
 import matplotlib.pyplot as plt
-
+from tqdm import tqdm
 
 class HeatDiffusion(object):
     def __init__(self, image_size, Lx=2, Ly=2, alpha=.5, u0=1e4, noise_steps=500, device='cuda'):
         self.device = device
         self.Lx = Lx
         self.Ly = Ly
+        self.image_size = image_size
         self.Nx = image_size
         self.Ny = image_size
         self.alpha = alpha
@@ -20,32 +21,29 @@ class HeatDiffusion(object):
     
     def initialize(self, x0):
         self.batchsize = x0.shape[0]
-        self.u = torch.full((self.batchsize, self.Nx, self.Ny), self.u0, dtype=torch.float32, device=self.device)
-        self.u.fill_(0.0)  # reset all to u0
+        self.u = torch.full((self.batchsize, self.Nx, self.Ny), 0.0, dtype=torch.float32, device=x0.device)
         
-        for idx, x0 in enumerate(x0):
-            x = 0.5 * (1 - x0[0][0]) * self.Lx
-            y = 0.5 * (x0[0][1] + 1) * self.Ly 
+        for idx, coord in enumerate(x0):
+            x = 0.5 * (1 - coord[0][0]) * self.Lx
+            y = 0.5 * (coord[0][1] + 1) * self.Ly
 
-            i, j = x / self.dx, y / self.dy
+            i = int(torch.round(x / self.dx).item())
+            j = int(torch.round(y / self.dy).item())
 
-            i0, j0 = int(i), int(j)
-            i1, j1 = i0 + 1, j0 + 1
-
-            fx, fy = i - i0, j - j0
-
-            self.u[idx, i0, j0] += (1 - fx) * (1 - fy) * self.u0
-            self.u[idx, i1, j0] += fx * (1 - fy) * self.u0
-            self.u[idx, i0, j1] += (1 - fx) * fy * self.u0
-            self.u[idx, i1, j1] += fx * fy * self.u0
+            self.u[idx, i, j] = self.u0
+            
         
     def get_ut(self, timesteps, obstacle_mask=None):  
         self.obstacles = obstacle_mask
         if obstacle_mask is None:
             obstacle_mask = torch.zeros((self.batchsize, self.Nx, self.Ny), dtype=torch.bool, device=self.dcvice)
         
+        # Neumann BC
+        obstacle_boundary = F.conv2d(obstacle_mask.float().unsqueeze(1), torch.ones((1,1,3,3), device=self.device), padding=1).squeeze(1) > 0
+        obstacle_boundary = obstacle_boundary & (~obstacle_mask)
+        
         results = []
-        for idx in range(self.batchsize):
+        for idx in tqdm(range(self.batchsize)):
             u_temp = self.u[idx].clone().unsqueeze(0)  # Extract current batch
             for t in range(timesteps[idx].item()):
                 u_new = u_temp.clone()
@@ -56,9 +54,17 @@ class HeatDiffusion(object):
                     (u_temp[:, 1:-1, 2:] - 2*u_temp[:, 1:-1, 1:-1] + u_temp[:, 1:-1, :-2]) / self.dy**2
                 )
 
-                # Ensuring that heat doesn't flow in/out of the obstacle
-                u_new[:, obstacle_mask[idx]] = u_temp[:, obstacle_mask[idx]]
+                # Dirichlet BC
+                # u_new[:, obstacle_mask[idx]] = u_temp[:, obstacle_mask[idx]]
 
+                # Neumann BC
+                u_new[:, 0, :] = u_new[:, 1, :]
+                u_new[:, -1, :] = u_new[:, -2, :]
+                u_new[:, :, 0] = u_new[:, :, 1]
+                u_new[:, :, -1] = u_new[:, :, -2]
+                
+                u_new[:, obstacle_boundary[idx]] = u_temp[:, obstacle_boundary[idx]]
+                
                 u_temp = u_new
 
             results.append(u_temp.squeeze(0))
@@ -67,9 +73,10 @@ class HeatDiffusion(object):
     
     def forward_diffusion(self, x0, timesteps, obstacle_mask=None):
         self.initialize(x0)
+        timesteps = timesteps * int((80000 / self.noise_steps))
         ut = self.get_ut(timesteps, obstacle_mask)
-#         return ut
-        return self.gradient_field(ut)
+        return ut
+#         return self.gradient_field(ut)
     
     def gradient_field(self, u):
         if not isinstance(u, torch.Tensor):
@@ -82,8 +89,10 @@ class HeatDiffusion(object):
         kernel_x = torch.tensor([[-0.5, 0, 0.5]], device=self.device).float().unsqueeze(0).unsqueeze(0)
         kernel_y = torch.tensor([[-0.5], [0], [0.5]], device=self.device).float().unsqueeze(0).unsqueeze(0)
         
-        grad_x = F.conv2d(u_dis, kernel_x, padding=(0,1)).squeeze(1)
-        grad_y = F.conv2d(u_dis, kernel_y, padding=(1,0)).squeeze(1)
+        scale_factor = (self.image_size - 1) / 2.0
+        
+        grad_x = F.conv2d(u_dis, kernel_x, padding=(0,1)).squeeze(1) / scale_factor
+        grad_y = F.conv2d(u_dis, kernel_y, padding=(1,0)).squeeze(1) / scale_factor
         
         return torch.stack([grad_x, grad_y], dim=-1)
     

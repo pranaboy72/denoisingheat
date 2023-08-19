@@ -15,7 +15,7 @@ log_path: './logs/'
 model_path: 'pretrained/'
 
 # Diffusion & Model
-noise_steps: 450
+noise_steps: 400
 
 # Train
 train_lr: 0.0001

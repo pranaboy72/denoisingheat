@@ -34,37 +34,38 @@ class HeatDiffusion(object):
             
         
     def get_ut(self, timesteps, obstacle_mask=None):  
-        self.obstacles = obstacle_mask
         if obstacle_mask is None:
-            obstacle_mask = torch.zeros((self.batchsize, self.Nx, self.Ny), dtype=torch.bool, device=self.dcvice)
-        
-        # Neumann BC
+            obstacle_mask = torch.zeros((self.batchsize, self.Nx, self.Ny), dtype=torch.bool, device=self.device)
+
+        # Detect obstacle boundaries
         obstacle_boundary = F.conv2d(obstacle_mask.float().unsqueeze(1), torch.ones((1,1,3,3), device=self.device), padding=1).squeeze(1) > 0
         obstacle_boundary = obstacle_boundary & (~obstacle_mask)
-        
+
         results = []
-        for idx in tqdm(range(self.batchsize)):
+        for idx in range(self.batchsize):
             u_temp = self.u[idx].clone().unsqueeze(0)  # Extract current batch
             for t in range(timesteps[idx].item()):
                 u_new = u_temp.clone()
 
-                # Apply the finite difference scheme
+                # Finite difference scheme for inner cells
                 u_new[:, 1:-1, 1:-1] = u_temp[:, 1:-1, 1:-1] + self.alpha * self.dt * (
                     (u_temp[:, 2:, 1:-1] - 2*u_temp[:, 1:-1, 1:-1] + u_temp[:, :-2, 1:-1]) / self.dx**2 +
                     (u_temp[:, 1:-1, 2:] - 2*u_temp[:, 1:-1, 1:-1] + u_temp[:, 1:-1, :-2]) / self.dy**2
                 )
 
-                # Dirichlet BC
-                # u_new[:, obstacle_mask[idx]] = u_temp[:, obstacle_mask[idx]]
+                # Neumann BC for obstacles
+                u_new[0, obstacle_boundary[idx]] = u_temp[0, obstacle_boundary[idx]]
 
-                # Neumann BC
-                u_new[:, 0, :] = u_new[:, 1, :]
-                u_new[:, -1, :] = u_new[:, -2, :]
-                u_new[:, :, 0] = u_new[:, :, 1]
-                u_new[:, :, -1] = u_new[:, :, -2]
-                
-                u_new[:, obstacle_boundary[idx]] = u_temp[:, obstacle_boundary[idx]]
-                
+                # Neumann BC for edges of the map
+                u_new[:, 0, 1:-1] = u_temp[:, 1, 1:-1]
+                u_new[:, 1:-1, 0] = u_temp[:, 1:-1, 1]
+                u_new[:, -1, 1:-1] = u_temp[:, -2, 1:-1]
+                u_new[:, 1:-1, -1] = u_temp[:, 1:-1, -2]
+                u_new[:, 0, 0] = (u_temp[:, 1, 0] + u_temp[:, 0, 1]) / 2.0
+                u_new[:, -1, 0] = (u_temp[:, -2, 0] + u_temp[:, -1, 1]) / 2.0
+                u_new[:, 0, -1] = (u_temp[:, 1, -1] + u_temp[:, 0, -2]) / 2.0
+                u_new[:, -1, -1] = (u_temp[:, -2, -1] + u_temp[:, -1, -2]) / 2.0
+
                 u_temp = u_new
 
             results.append(u_temp.squeeze(0))
@@ -73,10 +74,10 @@ class HeatDiffusion(object):
     
     def forward_diffusion(self, x0, timesteps, obstacle_mask=None):
         self.initialize(x0)
-        timesteps = timesteps * int((80000 / self.noise_steps))
+        timesteps = timesteps * int((70000 / self.noise_steps))
         ut = self.get_ut(timesteps, obstacle_mask)
-        return ut
-#         return self.gradient_field(ut)
+#         return ut
+        return self.gradient_field(ut)
     
     def gradient_field(self, u):
         if not isinstance(u, torch.Tensor):

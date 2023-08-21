@@ -111,13 +111,13 @@ class HeatDiffusion(object):
 
 
 class HeatDiffusion2(object):
-    def __init__(self, image_size, u0=1000, noise_steps=500, heat_steps=200000, alpha=0.5, device='cuda'):
+    def __init__(self, image_size, u0=1000, noise_steps=500, heat_steps=200000, alpha=1.0, device='cuda'):
         self.image_size = image_size
         self.u0 = u0
         self.noise_steps = noise_steps
         self.heat_steps = heat_steps
         self.alpha = alpha
-        self.dt = 0.5 #int(1 / (4 * alpha))   # For stability, CFL condition: dt <= (dx^2 * dy*2) / (2*alpha* (dx^2 + dy^2))
+        self.dt = 0.25 #int(1 / (4 * alpha))   # For stability, CFL condition: dt <= (dx^2 * dy*2) / (2*alpha* (dx^2 + dy^2))
         self.device = device
         self.laplacian_kernel = torch.tensor([[[[0, 1, 0], 
                                        [1, -4, 1], 
@@ -138,7 +138,7 @@ class HeatDiffusion2(object):
         u = torch.zeros((B, self.image_size, self.image_size), device=heat_sources.device)
 
         if obstacle_masks is None:
-            obstacle_masks = torch.zeros((B, self.image_size, self.image_size), dtype=torch.bool, device=device)
+            obstacle_masks = torch.zeros((B, self.image_size, self.image_size), dtype=torch.bool, device=heat_sources.device)
 
         K = self.alpha * torch.ones_like(u)
         K[obstacle_masks] = 0
@@ -148,28 +148,30 @@ class HeatDiffusion2(object):
         K[:, :,-1] = 0
         
         
-        for b, t in enumerate(time_steps):
-            u[b, heat_sources[b, 0], heat_sources[b,1]] = self.u0
+        # for b, t in enumerate(time_steps):
+        #     u[b, heat_sources[b, 0], heat_sources[b,1]] = self.u0
             
-            for _ in range(int(t.item())):   
-                u_with_channel = u[b].unsqueeze(0).unsqueeze(0)
-                laplacian = F.conv2d(u_with_channel, self.laplacian_kernel, padding=1).squeeze(0).squeeze(0)
+        #     for _ in range(int(t.item())):   
+        #         u_with_channel = u[b].unsqueeze(0).unsqueeze(0)
+        #         laplacian = F.conv2d(u_with_channel, self.laplacian_kernel, padding=1).squeeze(0).squeeze(0)
 
-                u[b] += self.dt * (K[b] * laplacian)
+        #         u[b] += self.dt * (K[b] * laplacian)
         
-        # max_t = int(torch.max(time_steps).item())
+        max_t = time_steps.max().item()
+        for b in range(B):
+            u[b, heat_sources[b, 0], heat_sources[b, 1]] = self.u0
         
-        # for t in range(max_t):
-        #     u[torch.arange(B), heat_sources[:, 0], heat_sources[:, 1]] = self.u0
-        #     laplacian = F.conv2d(u.unsqueeze(1), self.laplacian_kernel, padding=1).squeeze(1)
+        for t in range(1, max_t + 1):
+            current_mask = (t <= time_steps)
             
-        #     not_exceeded_mask = (t < time_steps).unsqueeze(-1).unsqueeze(-1)
-        #     u[not_exceeded_mask] = u[not_exceeded_mask] + self.dt * (K[not_exceeded_mask] * laplacian[not_exceeded_mask])
-
+            laplacian = F.conv2d(u.unsqueeze(1), self.laplacian_kernel,padding=1).squeeze(1)
+            u[current_mask] += self.dt * (K[current_mask] * laplacian[current_mask])
+            
         return u
 
     def gradient_field(self, u):
-        u_log = torch.log(u)
+        eps = 1e-8
+        u_log = torch.log(u + eps)
         u_dis = u_log.clone().unsqueeze(1)
         
         kernel_x = torch.tensor([[-0.5, 0, 0.5]], device=u.device).float().unsqueeze(0).unsqueeze(0)

@@ -15,13 +15,13 @@ log_path: './logs/'
 model_path: 'pretrained/'
 
 # Diffusion & Model
-heat_steps: 80000
-noise_steps: 10
+heat_steps: 100000
+noise_steps: 300
 
 # Train
 train_lr: 0.0001
-epochs: 2000
-batch_size: 18
+iterations: 2000
+batch_size: 24
 
 # Eval
 eval_samples: 1000

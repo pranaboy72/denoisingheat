@@ -6,12 +6,12 @@ import cv2
 import numpy as np
 import torch
 from torchvision import transforms
-import PIL
 from PIL import Image, ImageDraw
 import requests
 from typing import Optional, Union
 import random
-
+from io import BytesIO
+from tqdm import tqdm
 
 def log_num_check(path):
     log_num = 0
@@ -445,3 +445,40 @@ def overlay_goals_agents(bg, obj, goal, agent, circle_rad:float=5):
         draw.ellipse((c0-circle_rad, c1-circle_rad, c0+circle_rad, c1+circle_rad), fill = 'red', outline='red')
         
     return bg
+
+def vector_field(fields):
+    if isinstance(fields, torch.Tensor):
+        fields = fields.cpu().numpy()
+        
+    stride = 4
+    x, y = np.meshgrid(np.arange(128), np.arange(128))
+    
+    fields_list = [] 
+    print('fields visualizing...')
+    for i in tqdm(range(fields.shape[0])):
+        U = fields[i, ::stride, ::stride, 0]
+        V = fields[i, ::stride, ::stride, 1]
+        # mag = np.sqrt(U**2 + V**2)  
+    
+        fig, ax = plt.subplots(figsize=(10, 10))
+        quiver = ax.quiver(x, y, U, V, 
+                           scale=100, 
+                           cmap='viridis', 
+                           angles='xy',
+                           headlength=5,
+                           headwidth=4,
+                           headaxislength=4.5,
+                           units='xy',
+                           width=0.01,
+                        )
+        fig.colorbar(quiver, ax=ax)
+        
+        buf = BytesIO()
+        plt.savefig(buf, format="png")
+        buf.seek(0)
+        
+        pil_img = Image.open(buf)
+        fields_list.append(pil_img)
+        plt.close(fig)
+        
+    return fields_list

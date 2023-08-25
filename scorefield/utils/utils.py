@@ -269,8 +269,10 @@ def overlay_goal(img, img_size, objs, pos):
     
     for i in range(len(objs)):
         objs[i] = objs[i].resize((W // 5, H // 5), Image.LANCZOS)
-    
-    pos_pix = ((1+pos)/2 * torch.tensor([H, W], device=pos.device, dtype=pos.dtype)).squeeze(0)    
+
+    pos_pix = ((1+pos)/2 * torch.tensor([H, W], device=pos.device, dtype=pos.dtype))
+    if pos.dim() != 3:
+        pos_pix = pos_pix.squeeze(0)
     
     imgs = []
     for i, center in enumerate(pos_pix.cpu().numpy()):
@@ -379,14 +381,15 @@ def overlay_goal_agent(bg, obj, goal, agent, circle_rad:float=3):
 
     assert goal_pix.dim() == 3  # (B, 1, 2)
     assert agent_pix.dim() == 3  # (B, N, 2)
-
+    
     bgs = []
     for i, center in enumerate(goal_pix.cpu().numpy()):
+        goal_num = i % len(obj) 
         for cen in center:
             c0, c1 = round(cen[1]),round(cen[0])
-            w, h = obj[i].size 
+            w, h = obj[goal_num].size 
             bg_copy = bg.copy()
-            bg_copy.paste(obj[i], (c0 - w//2, c1 - h//2), obj[i])
+            bg_copy.paste(obj[goal_num], (c0 - w//2, c1 - h//2), obj[goal_num])
             bgs.append(bg_copy)
         
     draws = [ImageDraw.Draw(bg) for bg in bgs]
@@ -450,8 +453,8 @@ def vector_field(fields):
     if isinstance(fields, torch.Tensor):
         fields = fields.cpu().numpy()
         
-    stride = 4
-    x, y = np.meshgrid(np.arange(128), np.arange(128))
+    stride = 1
+    x, y = np.meshgrid(np.arange(0, 128, stride), np.arange(0, 128, stride))
     
     fields_list = [] 
     print('fields visualizing...')

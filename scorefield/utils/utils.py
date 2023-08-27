@@ -485,3 +485,27 @@ def vector_field(fields):
         plt.close(fig)
         
     return fields_list
+
+
+def clip_vectors(U,V,max_mag = 1.0):
+    mag = torch.sqrt(U**2 +V**2)
+    clipped_mags = torch.clamp(mag, max = max_mag)
+    scale_factors = clipped_mags / (mag + 1e-9)
+    
+    U_clipped = U * scale_factors
+    V_clipped = V * scale_factors
+    
+    return U_clipped, V_clipped
+
+
+def clip_batch_vectors(vector_field, max_mag=1.0):
+    U, V = vector_field[...,0], vector_field[...,1]
+    
+    mag = torch.sqrt(U**2 + V**2)
+    clipped_mags = torch.clamp(mag, max=max_mag)
+    scale_factors = clipped_mags / (mag + 1e-9)
+    
+    U_clipped = U * scale_factors
+    V_clipped = V * scale_factors
+    
+    return torch.stack((U_clipped, V_clipped), dim=-1)

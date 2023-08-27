@@ -275,10 +275,14 @@ class Unet(nn.Module):
         attn_dim_head = 32,
         attn_heads = 4,
         full_attn = (False, False, False, True),
-        flash_attn = False
+        flash_attn = False,
+        precision = 'single',
     ):
         super().__init__()
-
+        
+        # preicision
+        self.precision = torch.float64 if precision=='double' else torch.float32
+        
         # determine dimensions
 
         self.channels = channels
@@ -357,7 +361,7 @@ class Unet(nn.Module):
                 block_klass(dim_out + dim_in, dim_out, time_emb_dim = time_dim),
                 attn_klass(dim_out, dim_head = layer_attn_dim_head, heads = layer_attn_heads),
                 Upsample(dim_out, dim_in) if not is_last else  nn.Conv2d(dim_out, dim_in, 3, padding = 1)
-            ]))
+            ])).to(self.precision)
 
         default_out_dim = channels * (1 if not learned_variance else 2)
         self.out_dim = default(out_dim, default_out_dim)

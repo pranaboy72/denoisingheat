@@ -15,13 +15,14 @@ model_path: 'pretrained/'
 
 # Diffusion & Model
 u0: 100
-heat_steps: 20000 # 50000
+heat_steps: 50000 # 50000
 noise_steps: 400 # 200
+precision: 'single'
 
 # Train
 train_lr: 0.0001
-iterations: 4000
-batch_size: 4
+iterations: 1500
+batch_size: 18
 
 # Eval
 eval_samples: 1000

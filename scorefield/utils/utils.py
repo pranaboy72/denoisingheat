@@ -63,7 +63,7 @@ def random_rgb(goal, num):
 def get_distance(a, b):
     return torch.sqrt((a[0] - b[0])**2 + (a[1] - b[1])**2)
 
-def gen_obstacles(img, pos):
+def draw_obstacles_pil(img, pos):
     assert len(pos[0]) == 4
     
     draw = ImageDraw.Draw(img)
@@ -75,19 +75,103 @@ def gen_obstacles(img, pos):
         draw.rectangle([top_left, bottom_right], fill='black')
     return img
 
-def gen_obstacle_masks(batch_size, bg_size, img_size, pos):
+def draw_obs(bg_img, mask):
+    assert isinstance(bg_img, Image.Image)
+    img = bg_img.copy()
+    draw = ImageDraw.Draw(img)
+    
+    bg_width, bg_height = img.size 
+    mask_height, mask_width = mask.shape
+
+    x_scale = bg_width / mask_width
+    y_scale = bg_height / mask_height
+
+    for y in range(mask_height):
+        for x in range(mask_width):
+            if mask[y, x]: 
+                scaled_x = round(x * x_scale)
+                scaled_y = round(y * y_scale)
+                draw.rectangle([(scaled_x, scaled_y), 
+                                (scaled_x + round(x_scale), scaled_y + round(y_scale))], fill='black')
+                
+    return img
+
+def draw_obstacles_pixel(bg, obstacle_masks):
+    batch_size, _, _ = obstacle_masks.shape
+    batched_images = []
+    for i in range(batch_size):
+        background = bg.copy()
+        batched_images.append(draw_obs(background, obstacle_masks[i]))
+    return batched_images      
+
+def convert_to_obstacle_masks(batch_size, bg_size, img_size, pos):
     masks = torch.zeros((batch_size, img_size, img_size), dtype=torch.bool, device='cuda')
     
     for p in pos:
         masks[:, int(p[1]*img_size/bg_size[1]):int(p[3]*img_size/bg_size[1]), \
               int(p[0]*img_size/bg_size[0]):int(p[2]*img_size/bg_size[0])] = 1
     return masks
+
+def is_valid_obstacles(mask, x_start, x_size, y_start, y_size, min_distance):
+    x_end, y_end = x_start + x_size, y_start + y_size
+    
+    x_safe_start = max(0, x_start - min_distance)
+    y_safe_start = max(0, y_start - min_distance)
+    x_safe_end = min(mask.shape[0], x_end + min_distance)
+    y_safe_end = min(mask.shape[1], y_end + min_distance)
+    
+    if torch.sum(mask[x_safe_start:x_safe_end, y_safe_start:y_safe_end]) > 0:
+        return False
+    return True
+
+def randgen_obstacle_masks(batch_size, image_size, device='cuda'):
+    total_obstacle_area = 4800
+    max_length = 80
+    min_length = 30
+    min_distance = 30
+    max_attempts = 100
+
+    masks = torch.zeros(batch_size, image_size, image_size, dtype=torch.bool, device=device)
+
+    for i in range(batch_size):
+        num_obstacles = torch.randint(1, 6, (1,)).item()
+        areas = torch.tensor(total_obstacle_area // num_obstacles, device=device).repeat(num_obstacles)
+
+        for area in areas:
+            attempts = 0
+            while attempts < max_attempts:
+                possible_x_sizes = [x for x in range(min_length, max_length + 1) if min_length <= (area // x) <= max_length]
+                if not possible_x_sizes:
+                    area = (area * 0.9).long()
+                    attempts += 1
+                    continue
+
+                x_size = random.choice(possible_x_sizes)
+                y_size = area // x_size
+
+                x_start = torch.randint(0, image_size - x_size + 1, (1,)).item()
+                y_start = torch.randint(0, image_size - y_size + 1, (1,)).item()
+
+                if is_valid_obstacles(masks[i], x_start, x_size, y_start, y_size, min_distance):
+                    masks[i, x_start:x_start + x_size, y_start:y_start + y_size] = 1
+                    break
+                attempts += 1
+
+    return masks
+
+
+def is_valid_goals(x, y, obstacles, clearance=10):
+    x_start, x_end = max(0, int(x-clearance)), min(obstacles.shape[0], int(x+clearance))
+    y_start, y_end = max(0, int(y-clearance)), min(obstacles.shape[1], int(y+clearance))
+    return torch.sum(obstacles[x_start:x_end, y_start:y_end]) == 0
+    
     
 def gen_goals(
     bounds, 
     n:Union[tuple, int], 
+    img_size: int,
     dist:Optional[float]=None, 
-    obstacles:Optional[np.array]=None,
+    obstacles:Optional[torch.Tensor]=None,
     device='cuda'
 ):
     assert len(bounds) == 4, f'Unappropriate map bound: {bounds}'
@@ -98,18 +182,25 @@ def gen_goals(
         M, N = n
         
     goals = []
-    for m in range(M):
+    for batch_idx in range(N):
         while True:
-            x = bounds[0] + (bounds[1] - bounds[0]) * torch.rand((N, 1), dtype=torch.float32, device=device)
-            y = bounds[2] + (bounds[3] - bounds[2]) * torch.rand((N, 1), dtype=torch.float32, device=device)
+            x = bounds[0] + (bounds[1] - bounds[0]) * torch.rand((M, 1), dtype=torch.float32, device=device)
+            y = bounds[2] + (bounds[3] - bounds[2]) * torch.rand((M, 1), dtype=torch.float32, device=device)
 
+            if obstacles is not None:
+                pixel_x = [((xi + 1) * 0.5 * (img_size - 1)).long() for xi in x]
+                pixel_y = [((yi + 1) * 0.5 * (img_size - 1)).long() for yi in y]
+                valid_locations = [is_valid_goals(xi, yi, obstacles[batch_idx]) for xi, yi in zip(pixel_x, pixel_y)]
+                if not all(valid_locations):
+                    continue                
+            
             if dist is None:
                 goals.append(torch.cat((x, y), dim=1))
                 break
             else:
                 valid=True
-                for i in range(N):
-                    for j in range(i+1, N):
+                for i in range(M):
+                    for j in range(i+1, M):
                         if get_distance([x[i],y[i]], [x[j], y[j]]) < dist:
                             valid = False
                             break
@@ -118,10 +209,8 @@ def gen_goals(
                 if valid:
                     goals.append(torch.cat((x, y), dim=1))
                     break
-                    
-    if M == 1:
-        return torch.stack(goals).squeeze(0)
     return torch.stack(goals)
+
 
 def make_batch(renderer, map_img, targets, batch_size):
     batch=[]
@@ -261,11 +350,12 @@ def overlay_goal(img, img_size, objs, pos):
     assert len(pos) % len(objs) == 0
     n = len(pos) // len(objs) 
     
-    if img.height != img_size:
+    if img[0].height != img_size:
         new_size = (img_size, img_size)
-        img = img.resize(new_size, Image.LANCZOS)
+        for i in range(len(img)):
+            img[i] = img[i].resize(new_size, Image.LANCZOS)
     
-    W, H = img.size
+    W, H = img[0].size
     
     for i in range(len(objs)):
         objs[i] = objs[i].resize((W // 5, H // 5), Image.LANCZOS)
@@ -277,7 +367,7 @@ def overlay_goal(img, img_size, objs, pos):
     imgs = []
     for i, center in enumerate(pos_pix.cpu().numpy()):
         for cen in center:
-            bg = img.copy()
+            bg = img[i].copy()
             obj_num = i // n
             c0, c1 = round(cen[1]),round(cen[0])
             w, h = objs[obj_num].size

@@ -5,7 +5,7 @@ image_size: 128
 goal_bounds: [-0.8, 0.8, -0.8, 0.8]
 agent_bounds: [-1.,1.,-1.,1.]
 goal_num: 1
-obstacles: [[70,80,180,160]]  # O : [70, 80, 180, 160]
+obstacles: [[0,80,180,160]]  # O : [70, 80, 180, 160]
 
 # Misc
 seed: 123
@@ -15,14 +15,14 @@ model_path: 'pretrained/'
 
 # Diffusion & Model
 u0: 100
-heat_steps: 50000 # 50000
-noise_steps: 400 # 200
+heat_steps: 5000 # 50000
+noise_steps: 200 # 200
 precision: 'single'
 
 # Train
 train_lr: 0.0001
-iterations: 1500
-batch_size: 18
+iterations: 4000
+batch_size: 24
 
 # Eval
 eval_samples: 1000

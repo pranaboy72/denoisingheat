@@ -20,8 +20,9 @@ noise_steps: 200 # 200
 precision: 'single'
 
 # Train
+epochs: 15
 train_lr: 0.0001
-iterations: 4000
+iterations: 1500
 batch_size: 24
 
 # Eval

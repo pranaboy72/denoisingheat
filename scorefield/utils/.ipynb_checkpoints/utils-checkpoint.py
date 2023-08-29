@@ -190,7 +190,7 @@ def gen_goals(
             if obstacles is not None:
                 pixel_x = [((xi + 1) * 0.5 * (img_size - 1)).long() for xi in x]
                 pixel_y = [((yi + 1) * 0.5 * (img_size - 1)).long() for yi in y]
-                valid_locations = [is_valid_goals(xi, yi, obstacles[batch_idx]) for xi, yi in zip(pixel_x, pixel_y)]
+                valid_locations = [is_valid_goals(xi, yi, obstacles) for xi, yi in zip(pixel_x, pixel_y)]
                 if not all(valid_locations):
                     continue                
             
@@ -350,12 +350,11 @@ def overlay_goal(img, img_size, objs, pos):
     assert len(pos) % len(objs) == 0
     n = len(pos) // len(objs) 
     
-    if img[0].height != img_size:
+    if img.height != img_size:
         new_size = (img_size, img_size)
-        for i in range(len(img)):
-            img[i] = img[i].resize(new_size, Image.LANCZOS)
+        img = img.resize(new_size, Image.LANCZOS)
     
-    W, H = img[0].size
+    W, H = img.size
     
     for i in range(len(objs)):
         objs[i] = objs[i].resize((W // 5, H // 5), Image.LANCZOS)
@@ -367,7 +366,7 @@ def overlay_goal(img, img_size, objs, pos):
     imgs = []
     for i, center in enumerate(pos_pix.cpu().numpy()):
         for cen in center:
-            bg = img[i].copy()
+            bg = img.copy()
             obj_num = i // n
             c0, c1 = round(cen[1]),round(cen[0])
             w, h = objs[obj_num].size

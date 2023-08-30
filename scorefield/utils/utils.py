@@ -160,7 +160,7 @@ def randgen_obstacle_masks(batch_size, image_size, device='cuda'):
     return masks
 
 
-def is_valid_goals(x, y, obstacles, clearance=10):
+def is_valid_goals(x, y, obstacles, clearance=15):
     x_start, x_end = max(0, int(x-clearance)), min(obstacles.shape[0], int(x+clearance))
     y_start, y_end = max(0, int(y-clearance)), min(obstacles.shape[1], int(y+clearance))
     return torch.sum(obstacles[x_start:x_end, y_start:y_end]) == 0
@@ -349,13 +349,16 @@ def get_url_pretrained(url, pt):
 def overlay_goal(img, img_size, objs, pos):
     assert len(pos) % len(objs) == 0
     n = len(pos) // len(objs) 
-    
-    if img.height != img_size:
+
+    if len(img) != pos.shape[0]:
+        img = img * pos.shape[0]
+        
+    if img[0].height != img_size:
         new_size = (img_size, img_size)
-        img = img.resize(new_size, Image.LANCZOS)
-    
-    W, H = img.size
-    
+        for i in range(len(img)):
+            img[i] = img[i].resize(new_size, Image.LANCZOS)
+    W, H = img[0].size
+        
     for i in range(len(objs)):
         objs[i] = objs[i].resize((W // 5, H // 5), Image.LANCZOS)
 
@@ -366,7 +369,7 @@ def overlay_goal(img, img_size, objs, pos):
     imgs = []
     for i, center in enumerate(pos_pix.cpu().numpy()):
         for cen in center:
-            bg = img.copy()
+            bg = img[i].copy()
             obj_num = i // n
             c0, c1 = round(cen[1]),round(cen[0])
             w, h = objs[obj_num].size

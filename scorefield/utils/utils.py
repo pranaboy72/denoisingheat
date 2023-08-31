@@ -73,7 +73,7 @@ def draw_obstacles_pil(img, pos):
         bottom_right = (p[2], p[3])
 
         draw.rectangle([top_left, bottom_right], fill='black')
-    return img
+    return [img]
 
 def draw_obs(bg_img, mask):
     assert isinstance(bg_img, Image.Image)
@@ -430,15 +430,19 @@ def combine_objects(img, img_size, objs, pos):
 
 def overlay_images(img, img_size, objs, pos, n:Optional[list]=None):
     obs = objs.copy()
-    if img.height != img_size:
+    if len(img) != pos.shape[0]:
+        img = img * pos.shape[0]
+        
+    if img[0].height != img_size:
         new_size = (img_size, img_size)
-        img = img.resize(new_size, Image.ANTIALIAS)
+        for i in range(len(img)):
+            img[i] = img[i].resize(new_size, Image.ANTIALIAS)
     
     while len(obs) != n and n is not None:
         idx = random.randrange(len(obs))
         obs.pop(idx)
     
-    W, H = img.size
+    W, H = img[0].size
     
     for i in range(len(obs)):
         obs[i] = obs[i].resize((W // 5, H // 5), Image.LANCZOS)
@@ -448,7 +452,7 @@ def overlay_images(img, img_size, objs, pos, n:Optional[list]=None):
     imgs = []
     for i, center in enumerate(pos_pix.cpu().numpy()):
         obj_num = i % len(obs)
-        if obj_num == 0: bg = img.copy()
+        if obj_num == 0: bg = img[i].copy()
         c0, c1 = round(center[1]), round(center[0])
         w, h = obs[obj_num].size
         bg.paste(obs[obj_num], (c0 - w//2, c1 - h//2), obs[obj_num])

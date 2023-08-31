@@ -79,7 +79,7 @@ class HeatDiffusion(object):
         input_tensor_padded = F.pad(input_tensor.unsqueeze(1), (padding, padding, padding, padding), mode='reflect')
 
         smoothed_tensor = F.conv2d(input_tensor_padded, gaussian_filter, stride=1, padding=0)
-
+        
         return smoothed_tensor.squeeze(1)
     
     def revise_obstacle_masks(self, batch_size, obstacle_masks):
@@ -92,21 +92,29 @@ class HeatDiffusion(object):
         obstacle_masks[:, -1, :] = 1
    
         self.obstacle_masks = obstacle_masks
+    
+    def make_sure_kernel(self, u):
+        u[self.obstacle_masks] = 0
+        u[:, 0, :] = 0
+        u[:, -1, :] = 0
+        u[:, :, 0] = 0
+        u[:, :, -1] = 0
+        
+        return u
         
     def compute_ut(self, time_steps, heat_sources):
         heat_sources = self.convert_space(heat_sources, 'pixel') # When [-0.7, 0.] => [19,63] (128x128)
-        
-        B = heat_sources.shape[0]
-        u = torch.zeros((B, self.image_size, self.image_size), dtype=self.precision, device=heat_sources.device)
+
+        goals = heat_sources.shape[0]
+        u = torch.zeros((goals*len(time_steps), self.image_size, self.image_size), dtype=self.precision, device=heat_sources.device)
 
         K = self.compute_K(u)
 
-        for b in range(B):
-            u[b, heat_sources[b,0], heat_sources[b, 1]] = self.u0
-
-        f = u.clone()
+        for b in range(goals * len(time_steps)):
+            u[b, heat_sources[b%goals,0], heat_sources[b%goals, 1]] = self.u0
             
         max_time_steps = torch.max(time_steps).item()
+        time_steps = time_steps.repeat(goals)
         
         for t in range(1, max_time_steps+1):
             current_mask = (t < time_steps)
@@ -120,33 +128,41 @@ class HeatDiffusion(object):
             laplacian[:, 1:-1, 1:-1] = top + bottom + left + right - 4 * u[:, 1:-1, 1:-1]
             
             u[current_mask] += self.dt * (K[current_mask] * laplacian[current_mask])
-             
+        
         u = self.gaussian_filter(u)
+        u = self.make_sure_kernel(u)
         sums = u.sum(dim=(1,2), keepdim=True)
         norm_u = u / sums
 
         return norm_u
     
-    def sample_from_heat(self, ut):
+    def sample_from_heat(self, ut, sample_num=1):
         B = ut.size(0)
-        
-        valid_mask = (ut > 0).flatten().view(B, -1)
-        valid_indices = torch.nonzero(valid_mask)
-        
-        random_indices = []
+        H, W = ut.size(1), ut.size(2)
+
+        valid_mask = (ut > 0).flatten(start_dim=1)  # Flatten spatial dimensions only.
+        valid_indices = torch.nonzero(valid_mask, as_tuple=False)
+
+        all_random_indices = []
+
         for b in range(B):
             choices = valid_indices[valid_indices[:, 0] == b][:, 1]
-            if len(choices) > 0:
-                random_index = choices[torch.randint(0, len(choices), (1,))].item()
-                random_indices.append(random_index)
-            else:
-                random_indices.append(torch.randint(0, ut.shape[1] * ut.shape[2], (1,)).item())
-        random_indices = torch.tensor(random_indices, dtype=torch.int64)
+            random_indices_b = []
+            for _ in range(sample_num):
+                if len(choices) > 0:
+                    random_index = choices[torch.randint(0, len(choices), (1,))].item()
+                    random_indices_b.append(random_index)
+                else:
+                    random_indices_b.append(torch.randint(0, H * W, (1,)).item())
 
-        h = random_indices // ut.size(2)
-        w = random_indices % ut.size(2)
+            all_random_indices.append(torch.tensor(random_indices_b, dtype=torch.int64))
 
-        return torch.stack((h, w), dim=1)
+        all_random_indices = torch.stack(all_random_indices)
+
+        h = all_random_indices // W
+        w = all_random_indices % W
+
+        return torch.stack((h, w), dim=2)
 
     def score(self, u, x=None):
         eps = 1e-9
@@ -162,23 +178,24 @@ class HeatDiffusion(object):
         grad_h[self.obstacle_masks] = 0
         
         score_field = torch.stack([grad_h, grad_w], dim=-1) 
-        
         score_field[self.obstacle_masks] = 0
+
         if x is not None:
-            batch_indices = torch.arange(u.shape[0])
-            x_indices = x[:, 0]
-            y_indices = x[:, 1]
-            score = score_field[batch_indices, x_indices, y_indices, :]
+            B, version, _ = x.shape
+            batch_indices = torch.arange(B).unsqueeze(1).expand(B, version).contiguous().view(-1)
+            x_indices = x[:, :, 0].contiguous().view(-1)
+            y_indices = x[:, :, 1].contiguous().view(-1)
+            score = score_field[batch_indices, x_indices, y_indices, :].view(B*version, -1)
         
             return score
 #         score_field = clip_batch_vectors(score_field, 0.01)
         return score_field
 
-    def forward_diffusion(self, time_steps, heat_sources, obstacle_masks=None):
+    def forward_diffusion(self, time_steps, heat_sources, sample_num, obstacle_masks=None):
         self.revise_obstacle_masks(heat_sources.shape[0], obstacle_masks)
         time_steps = time_steps * int((self.heat_steps / self.noise_steps))
         ut_batch = self.compute_ut(time_steps, heat_sources)
-        x_t = self.sample_from_heat(ut_batch)
+        x_t = self.sample_from_heat(ut_batch, sample_num)    # (batchsize / sample_num, sample_num, 2)
         
         return self.score(ut_batch, x_t), self.score(ut_batch), self.convert_space(x_t, 'norm')
 #         return ut_batch

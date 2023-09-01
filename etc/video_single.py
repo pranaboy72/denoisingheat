@@ -1,21 +1,27 @@
 import numpy as np
 import cv2
 
-img_list = np.load('img_list.npy', allow_pickle=True).tolist()
+img_list = np.load('../results/heat/eval.npy', allow_pickle=True)
 
-n = int(len(img_list) / 3)
-for i in range(3):
-    frames = [cv2.cvtColor(np.array(img[i]), cv2.COLOR_RGB2BGR) for img in img_list]
-        
-    frame_height, frame_width, _ = frames[0].shape
-    fps = 1
-    video_filename = f'./video{i}.mp4'
+frames = []
+
+for i in range(img_list.shape[0]):
+    img_array = img_list[i][0][:,:,:3]    
+
+    if img_array.dtype == np.float32:
+        img_array = (img_array * 255).astype(np.uint8)
+
+    frame = cv2.cvtColor(img_array, cv2.COLOR_RGB2BGR)
+    frames.append(frame)
+
+frame_height, frame_width, _ = frames[0].shape
+fps = 20
+video_filename = f'./eval.mp4'
     
-    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+video = cv2.VideoWriter(video_filename, fourcc, fps, (frame_width, frame_height))
 
-    video = cv2.VideoWriter(video_filename, fourcc, fps, (frame_width, frame_height))
-
-    for frame in frames:
-        video.write(frame)
+for frame in frames:
+    video.write(frame)
     
-    video.release()
+video.release()

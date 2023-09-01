@@ -4,7 +4,7 @@ device: 'cuda'
 image_size: 128
 goal_bounds: [-0.8, 0.8, -0.8, 0.8]
 agent_bounds: [-1.,1.,-1.,1.]
-obstacles: [[0,80,180,160]]  # O : [70, 80, 180, 160]
+obstacles: [[80,80,180,160]]  # O : [70, 80, 180, 160]
 
 # Misc
 seed: 123
@@ -13,15 +13,15 @@ log_path: './logs/'
 model_path: 'pretrained/'
 
 # Diffusion & Model
-u0: 1  # 100
-heat_steps: 5000 # 5000
-noise_steps: 200 # 200
-sample_num: 3
+u0: 100  # 100
+heat_steps: 4000 # 5000
+noise_steps: 400 # 200
+sample_num: 1   # 4
 
 # Train
 epochs: 1
 train_lr: 0.0001
-iterations: 20000
+iterations: 4000
 random_goals: 1
 batch_size: 24
 

@@ -160,11 +160,10 @@ def randgen_obstacle_masks(batch_size, image_size, device='cuda'):
     return masks
 
 
-def is_valid_goals(x, y, obstacles, clearance=15):
-    x_start, x_end = max(0, int(x-clearance)), min(obstacles.shape[0], int(x+clearance))
-    y_start, y_end = max(0, int(y-clearance)), min(obstacles.shape[1], int(y+clearance))
-    return torch.sum(obstacles[x_start:x_end, y_start:y_end]) == 0
-    
+def is_valid_goals(pixel_x, pixel_y, obstacles, batch_idx, clearance=5):
+    x_start, x_end = max(0, pixel_x-clearance), min(obstacles.shape[1], pixel_x+clearance)
+    y_start, y_end = max(0, pixel_y-clearance), min(obstacles.shape[2], pixel_y+clearance)
+    return torch.sum(obstacles[batch_idx, x_start:x_end, y_start:y_end]) == 0
     
 def gen_goals(
     bounds, 
@@ -190,7 +189,8 @@ def gen_goals(
             if obstacles is not None:
                 pixel_x = [((xi + 1) * 0.5 * (img_size - 1)).long() for xi in x]
                 pixel_y = [((yi + 1) * 0.5 * (img_size - 1)).long() for yi in y]
-                valid_locations = [is_valid_goals(xi, yi, obstacles) for xi, yi in zip(pixel_x, pixel_y)]
+
+                valid_locations = [is_valid_goals(xi.item(), yi.item(), obstacles, batch_idx) for xi, yi in zip(pixel_x, pixel_y)]
                 if not all(valid_locations):
                     continue                
             
@@ -348,7 +348,7 @@ def get_url_pretrained(url, pt):
         
 def overlay_goal(img, img_size, objs, pos):
     assert len(pos) % len(objs) == 0
-    n = len(pos) // len(objs) 
+    n = len(objs)   # n different goals
 
     if len(img) != pos.shape[0]:
         img = img * pos.shape[0]
@@ -362,20 +362,20 @@ def overlay_goal(img, img_size, objs, pos):
     for i in range(len(objs)):
         objs[i] = objs[i].resize((W // 5, H // 5), Image.LANCZOS)
 
-    pos_pix = ((1+pos)/2 * torch.tensor([H, W], device=pos.device, dtype=pos.dtype))
-    if pos.dim() != 3:
-        pos_pix = pos_pix.squeeze(0)
+    if pos.dim() == 3 and pos.shape[1] == 1:
+        pos = pos.squeeze(1)
+
+    pos_pix = ((1+pos)/2 * torch.tensor([H-1, W-1], device=pos.device, dtype=pos.dtype))
     
     imgs = []
-    for i, center in enumerate(pos_pix.cpu().numpy()):
-        for cen in center:
-            bg = img[i].copy()
-            obj_num = i // n
-            c0, c1 = round(cen[1]),round(cen[0])
-            w, h = objs[obj_num].size
-            bg.paste(objs[obj_num], (c0 - w//2, c1 - h//2), objs[obj_num])
-            img_np = np.array(bg)[...,:3] / 255
-            imgs.append(img_np)
+    for i, cen in enumerate(pos_pix.cpu().numpy()):
+        bg = img[i].copy()
+        obj_num = i % n
+        c1, c0 = round(cen[1]),round(cen[0])
+        w, h = objs[obj_num].size
+        bg.paste(objs[obj_num], (c1 - w//2, c0 - h//2), objs[obj_num])
+        img_np = np.array(bg)[...,:3] / 255
+        imgs.append(img_np)
         
     imgs = np.stack(imgs, axis=0)
     

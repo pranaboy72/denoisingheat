@@ -15,4 +15,5 @@ torch==1.14.0a0+410ce96
 torchvision==0.15.0a0
 tqdm==4.64.1
 ipywidgets
-kornia
+tensorboard
+tensorflow

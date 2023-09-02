@@ -22,9 +22,9 @@ class HeatDiffusion(object):
         
         self.device = device
 
-        self.diffusion_steps = torch.arange(1, self.noise_steps, device=device)
+        self.diffusion_steps = torch.arange(1, self.noise_steps+1, device=device)
         self.heat_steps = self.convert_timespace(self.diffusion_steps)
-        
+        print(self.heat_steps)        
 
     def convert_space(self, previous, converted):
         """
@@ -67,7 +67,7 @@ class HeatDiffusion(object):
         result = []
 
         for i in range(B):
-            ti = t[i]
+            ti = torch.tensor(1) #t[i]
 
             x = torch.linspace(-kernel_size // 2, kernel_size // 2, kernel_size, dtype=input_tensor.dtype, device=input_tensor.device)
             kernel = torch.exp(-x**2 / (2*(torch.sqrt(ti))**2))
@@ -158,26 +158,31 @@ class HeatDiffusion(object):
         score_field = torch.stack([grad_h, grad_w], dim=-1)
         score_field[self.obstacle_masks] = 0
 
+        # non-dimensionalize
+        magnitudes = torch.norm(score_field, dim=-1, keepdim=True)
+        max_mag = magnitudes.view(score_field.shape[0],-1).max(dim=1,keepdim=True)[0].view(score_field.shape[0], 1, 1, 1)
+        nondim_scorefield = score_field / max_mag
+
         if x is not None:
             B, _ = x.shape
             batch_indices = torch.arange(B, device=x.device)
             h_indices = x[:, 0].long()
             w_indices = x[:, 1].long()
 
-            scores = score_field[batch_indices, h_indices, w_indices, :]
+            scores = nondim_scorefield[batch_indices, h_indices, w_indices, :]
 
             return scores
 #         score_field = clip_batch_vectors(score_field, 0.01)   # for visualization
-        return score_field
+        return nondim_scorefield
 
 
     def forward_diffusion(self, time_steps, heat_sources, sample_num, obstacle_masks=None):
         self.create_obstacle_masks(len(time_steps) * sample_num, obstacle_masks)
-        time_steps = self.heat_steps[time_steps]
+        time_steps = self.heat_steps[time_steps-1]
         ut_batch = self.compute_ut(time_steps, sample_num, heat_sources)
         x_t = self.sample_from_heat(ut_batch)
         return ut_batch, self.score(ut_batch, x_t), self.score(ut_batch), self.convert_space(x_t, 'norm')
     
     def sample_timesteps(self, n):
-        return torch.randint(low=0, high=self.noise_steps-1, size=(n,)).long()
+        return torch.randint(low=1, high=self.noise_steps+1, size=(n,)).long()
     

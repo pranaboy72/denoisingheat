@@ -22,7 +22,7 @@ time_type: 'exp'
 # Train
 epochs: 1
 train_lr: 0.0001
-iterations: 2000
+iterations: 3000
 random_goals: 1
 batch_size: 24   # 24 max for 128x128 image & 24GB VRAM
 

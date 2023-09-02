@@ -160,7 +160,7 @@ def randgen_obstacle_masks(batch_size, image_size, device='cuda'):
     return masks
 
 
-def is_valid_goals(pixel_x, pixel_y, obstacles, batch_idx, clearance=5):
+def is_valid_goals(pixel_x, pixel_y, obstacles, batch_idx, clearance=3):
     x_start, x_end = max(0, pixel_x-clearance), min(obstacles.shape[1], pixel_x+clearance)
     y_start, y_end = max(0, pixel_y-clearance), min(obstacles.shape[2], pixel_y+clearance)
     return torch.sum(obstacles[batch_idx, x_start:x_end, y_start:y_end]) == 0

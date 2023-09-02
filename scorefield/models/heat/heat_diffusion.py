@@ -6,19 +6,24 @@ from scipy.ndimage import distance_transform_edt
 from tqdm import tqdm
 from scorefield.utils.utils import clip_batch_vectors
 from scipy.ndimage import distance_transform_edt
+import math
 
 
 class HeatDiffusion(object):
-    def __init__(self, image_size, u0=1., noise_steps=500, heat_steps=1000, alpha=1.0, beta=10.0, device='cuda'):
+    def __init__(self, image_size, u0=1., noise_steps=500, heat_steps=1000, alpha=1.0, beta=10.0, time_type='linear',device='cuda'):
         self.image_size = image_size
         self.u0 = u0
         self.noise_steps = noise_steps
         self.heat_steps = heat_steps
         self.alpha = alpha
         self.beta = beta
+        self.time_type = time_type
         self.dt = 1 / (4 * alpha)   # For stability, CFL condition: dt <= (dx^2 * dy*2) / (2*alpha* (dx^2 + dy^2))
         
         self.device = device
+
+        self.diffusion_steps = torch.arange(1, self.noise_steps, device=device)
+        self.heat_steps = self.convert_timespace(self.diffusion_steps)
         
 
     def convert_space(self, previous, converted):
@@ -29,6 +34,15 @@ class HeatDiffusion(object):
             return ((previous + 1) * 0.5 * (self.image_size - 1)).long()
         elif converted == 'norm':
             return (previous / (self.image_size - 1) * 2 - 1)
+        
+    def convert_timespace(self, time_steps):
+        if self.time_type == 'linear':
+            return time_steps * int((self.heat_steps / self.noise_steps))
+        elif self.time_type == 'exp':
+            norm_steps = (torch.exp(self.diffusion_steps) - torch.exp(self.diffusion_steps[0])) / (torch.exp(self.diffusion_steps[-1]) - torch.exp(self.diffusion_steps[0]))
+            return (norm_steps * (self.heat_steps - 1) + 1).to(torch.int64)
+        else:
+            raise "Wrong time type"
 
 
     def compute_K(self, u):
@@ -121,15 +135,12 @@ class HeatDiffusion(object):
     def sample_from_heat(self, u):
         ut = u.clone()
 
-        ut_excluded = self.exclude_insulators(ut)
-        ut_excluded[ut_excluded == 0] = -1e10
-
-        ut_flat = F.softmax(ut_excluded.view(ut_excluded.size(0), -1), dim=1)
-
+        # ut = self.exclude_insulators(ut)
+        ut_flat = ut.view(ut.size(0),-1)
         sampled_indices = torch.multinomial(ut_flat, 1).squeeze()
 
-        h = sampled_indices // ut.size(2)
-        w = sampled_indices % ut.size(2)
+        h = sampled_indices // u.size(2)
+        w = sampled_indices % u.size(2)
 
         return torch.stack((h, w), dim=1)
     
@@ -159,13 +170,14 @@ class HeatDiffusion(object):
 #         score_field = clip_batch_vectors(score_field, 0.01)   # for visualization
         return score_field
 
+
     def forward_diffusion(self, time_steps, heat_sources, sample_num, obstacle_masks=None):
         self.create_obstacle_masks(len(time_steps) * sample_num, obstacle_masks)
-        time_steps = time_steps * int((self.heat_steps / self.noise_steps))
+        time_steps = self.heat_steps[time_steps]
         ut_batch = self.compute_ut(time_steps, sample_num, heat_sources)
         x_t = self.sample_from_heat(ut_batch)
         return ut_batch, self.score(ut_batch, x_t), self.score(ut_batch), self.convert_space(x_t, 'norm')
     
     def sample_timesteps(self, n):
-        return torch.randint(low=1, high=self.noise_steps, size=(n,)).long()
+        return torch.randint(low=0, high=self.noise_steps-1, size=(n,)).long()
     

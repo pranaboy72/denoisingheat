@@ -15,7 +15,7 @@ for i in range(img_list.shape[0]):
     frames.append(frame)
 
 frame_height, frame_width, _ = frames[0].shape
-fps = 20
+fps = 10
 video_filename = f'./eval.mp4'
     
 fourcc = cv2.VideoWriter_fourcc(*'mp4v')

@@ -24,7 +24,8 @@ class HeatDiffusion(object):
 
         self.diffusion_steps = torch.arange(1, self.noise_steps+1, device=device)
         self.heat_steps = self.convert_timespace(self.diffusion_steps)
-        print(self.heat_steps)        
+
+        self.std = self.heat_steps / 2      
 
     def convert_space(self, previous, converted):
         """

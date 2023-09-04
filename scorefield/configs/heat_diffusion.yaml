@@ -14,9 +14,10 @@ model_path: 'pretrained/'
 
 # Diffusion & Model
 u0: 100  # 100
-heat_steps: 70000 # 5000
+min_heat_step: 2
+max_heat_step: 72200 # 5000
 noise_steps: 10 # 200
-sample_num: 1   # 4
+sample_num: 1   # 1000
 time_type: 'exp'
 
 # Train
@@ -24,7 +25,7 @@ epochs: 1
 train_lr: 0.0001
 iterations: 4000
 random_goals: 1
-batch_size: 24   # 24 max for 128x128 image & 24GB VRAM
+batch_size: 24
 
 
 # Eval

@@ -10,11 +10,18 @@ import math
 
 
 class HeatDiffusion(object):
-    def __init__(self, image_size, u0=1., noise_steps=500, heat_steps=1000, alpha=1.0, beta=10.0, time_type='linear',device='cuda'):
+    def __init__(self, image_size, u0=1., noise_steps=500, min_heat_step=1, max_heat_step=1000, alpha=1.0, beta=10.0, time_type='linear',device='cuda'):
         self.image_size = image_size
         self.u0 = u0
         self.noise_steps = noise_steps
-        self.heat_steps = heat_steps
+        
+        lower_limit = int(math.sqrt(min_heat_step / 2))
+        upper_limit = int(math.sqrt(max_heat_step / 2))
+        assert lower_limit**2 * 2 == min_heat_step, "The value of min step is not valid. It should be 2*n**2" 
+        assert upper_limit**2 * 2 == max_heat_step, "The value of max step is not valid. It should be 2*n**2" 
+        
+        self.min_heat_step = min_heat_step
+        self.max_heat_step = max_heat_step
         self.alpha = alpha
         self.beta = beta
         self.time_type = time_type
@@ -23,9 +30,8 @@ class HeatDiffusion(object):
         self.device = device
 
         self.diffusion_steps = torch.arange(1, self.noise_steps+1, device=device)
-        self.heat_steps = self.convert_timespace(self.diffusion_steps)
-
-        self.std = self.heat_steps / 2      
+        self.heat_steps = self.convert_timespace(self.diffusion_steps).to(device)
+        self.std = torch.sqrt(self.heat_steps / 2)
 
     def convert_space(self, previous, converted):
         """
@@ -38,10 +44,15 @@ class HeatDiffusion(object):
         
     def convert_timespace(self, time_steps):
         if self.time_type == 'linear':
-            return time_steps * int((self.heat_steps / self.noise_steps))
+            return time_steps * int((self.max_heat_step / self.noise_steps))
         elif self.time_type == 'exp':
-            norm_steps = (torch.exp(self.diffusion_steps) - torch.exp(self.diffusion_steps[0])) / (torch.exp(self.diffusion_steps[-1]) - torch.exp(self.diffusion_steps[0]))
-            return (norm_steps * (self.heat_steps - 1) + 1).to(torch.int64)
+            factor = torch.tensor(3.)
+            log_space = torch.linspace(0, 1, steps=self.noise_steps)
+            exp_sequence = (torch.exp(factor * log_space) - 1) / (torch.exp(factor) - 1) * torch.tensor(int(math.sqrt(self.max_heat_step/2)))
+            exp_sequence = torch.round(exp_sequence)
+            exp_sequence[0] = 1
+            exp_sequence[-1] = int(math.sqrt(self.max_heat_step/2))
+            return (2 * exp_sequence**2).to(torch.int64)
         else:
             raise "Wrong time type"
 
@@ -59,7 +70,7 @@ class HeatDiffusion(object):
         return K
     
 
-    def gaussian_filter(self, ut, t, kernel_size=3):
+    def gaussian_filter(self, ut, kernel_size=3):
         input_tensor = ut.clone()
         if kernel_size % 2 == 0:
             kernel_size += 1
@@ -68,10 +79,10 @@ class HeatDiffusion(object):
         result = []
 
         for i in range(B):
-            ti = torch.tensor(1) #t[i]
+            std = self.std[i] #t[i]
 
             x = torch.linspace(-kernel_size // 2, kernel_size // 2, kernel_size, dtype=input_tensor.dtype, device=input_tensor.device)
-            kernel = torch.exp(-x**2 / (2*(torch.sqrt(ti))**2))
+            kernel = torch.exp(-x**2 / (2*std**2))
             kernel /= kernel.sum()
 
             gaussian_filter = torch.outer(kernel, kernel).unsqueeze(0).unsqueeze(0)
@@ -105,7 +116,7 @@ class HeatDiffusion(object):
     def compute_ut(self, time_steps, sample_num, heat_sources):
         heat_sources = self.convert_space(heat_sources, 'pixel')
 
-        u = torch.zeros((sample_num * len(time_steps), self.image_size, self.image_size), dtype=torch.float32, device=heat_sources.device)
+        u = torch.zeros((len(time_steps), self.image_size, self.image_size), dtype=torch.float32, device=heat_sources.device)
 
         K = self.compute_K(u)
 
@@ -113,7 +124,6 @@ class HeatDiffusion(object):
             u[b, heat_sources[b,...,0], heat_sources[b,...,1]] = self.u0
             
         max_time_steps = torch.max(time_steps).item()
-        time_steps = time_steps.repeat_interleave(sample_num)
 
         for t in range(1, max_time_steps+1):
             current_mask = (t < time_steps)
@@ -128,22 +138,22 @@ class HeatDiffusion(object):
 
             u[current_mask] += self.dt * (K[current_mask] * laplacian[current_mask])
 
-        u = self.gaussian_filter(u, time_steps)
+        u = self.gaussian_filter(u)
         sums = u.sum(dim=(1,2), keepdim=True)
         norm_u = u / sums
         return norm_u
     
-    def sample_from_heat(self, u):
+    def sample_from_heat(self, u, n):
         ut = u.clone()
 
         # ut = self.exclude_insulators(ut)
         ut_flat = ut.view(ut.size(0),-1)
-        sampled_indices = torch.multinomial(ut_flat, 1).squeeze()
+        sampled_indices = torch.multinomial(ut_flat, n, replacement=True)
 
         h = sampled_indices // u.size(2)
         w = sampled_indices % u.size(2)
 
-        return torch.stack((h, w), dim=1)
+        return torch.stack((h, w), dim=-1)
     
     def score(self, ut, x=None):
         u = ut.clone()
@@ -159,30 +169,24 @@ class HeatDiffusion(object):
         score_field = torch.stack([grad_h, grad_w], dim=-1)
         score_field[self.obstacle_masks] = 0
 
-        # non-dimensionalize
-        magnitudes = torch.norm(score_field, dim=-1, keepdim=True)
-        max_mag = magnitudes.view(score_field.shape[0],-1).max(dim=1,keepdim=True)[0].view(score_field.shape[0], 1, 1, 1)
-        nondim_scorefield = score_field / max_mag
-
         if x is not None:
-            B, _ = x.shape
-            batch_indices = torch.arange(B, device=x.device)
-            h_indices = x[:, 0].long()
-            w_indices = x[:, 1].long()
+            B, N, _ = x.shape
+            batch_indices = torch.arange(B, device=x.device).unsqueeze(1).expand(B, N)
+            h_indices = x[:, :, 0].long()
+            w_indices = x[:, :, 1].long()
 
-            scores = nondim_scorefield[batch_indices, h_indices, w_indices, :]
+            scores = score_field[batch_indices, h_indices, w_indices, :]
 
             return scores
-#         score_field = clip_batch_vectors(score_field, 0.01)   # for visualization
-        return nondim_scorefield
+        return score_field
 
 
     def forward_diffusion(self, time_steps, heat_sources, sample_num, obstacle_masks=None):
         self.create_obstacle_masks(len(time_steps) * sample_num, obstacle_masks)
         time_steps = self.heat_steps[time_steps-1]
         ut_batch = self.compute_ut(time_steps, sample_num, heat_sources)
-        x_t = self.sample_from_heat(ut_batch)
-        return ut_batch, self.score(ut_batch, x_t), self.score(ut_batch), self.convert_space(x_t, 'norm')
+        x_t = self.sample_from_heat(ut_batch, sample_num)   # (B, samplenum, 2)
+        return ut_batch, self.score(ut_batch, x_t).view(ut_batch.size(0),-1), self.score(ut_batch), self.convert_space(x_t, 'norm')
     
     def sample_timesteps(self, n):
         return torch.randint(low=1, high=self.noise_steps+1, size=(n,)).long()

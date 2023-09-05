@@ -43,6 +43,7 @@ def bilinear_interpolate_samples(fmap, pos):
 
     # Ensure fmap and pos are compatible
     assert fmap.size(0) == pos.size(0), 'Batch size of fmap and pos must be the same'
+    assert fmap.size(1) == 2
     
     # Repeat the feature map for each position
     grid = pos.unsqueeze(-2)
@@ -52,7 +53,8 @@ def bilinear_interpolate_samples(fmap, pos):
 
     # Perform bilinear interpolation
     interpolated_value = F.grid_sample(fmap, grid, mode="bilinear", padding_mode="zeros", align_corners=True)
-    
-    return interpolated_value.squeeze(-1).permute(0,2,1).view(pos.size(0), -1)
-
+    scores = interpolated_value.squeeze(-1).permute(0,2,1)
+    return scores
+    B, S, _ = scores.shape
+    return scores.reshape(B, S*2)
     

@@ -17,7 +17,7 @@ u0: 100  # 100
 min_heat_step: 1568     # should be 2 * n**2
 max_heat_step: 72200    # should be 2 * n**2
 noise_steps: 10 # 200
-sample_num: 10   # 1000
+sample_num: 100   # 1000
 time_type: 'exp'
 
 # Train

@@ -125,10 +125,10 @@ def is_valid_obstacles(mask, x_start, x_size, y_start, y_size, min_distance):
     return True
 
 def randgen_obstacle_masks(batch_size, image_size, device='cuda'):
-    total_obstacle_area = 4800
-    max_length = 80
-    min_length = 30
-    min_distance = 30
+    total_obstacle_area = int(image_size**2 * 0.3) # 4800 when 128
+    max_length = int(image_size*3/5) # 80 when 128
+    min_length = int(image_size/4) # 30 when 128
+    min_distance = int(image_size/5) # 30
     max_attempts = 100
 
     masks = torch.zeros(batch_size, image_size, image_size, dtype=torch.bool, device=device)

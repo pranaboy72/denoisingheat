@@ -14,16 +14,16 @@ model_path: 'pretrained/'
 
 # Diffusion & Model
 u0: 100  # 100
-min_heat_step: 32 #1568     # should be 2 * n**2
-max_heat_step: 72200 #72200    # should be 2 * n**2
+min_heat_step: 8 #1568     # should be 2 * n**2
+max_heat_step: 7688 #72200    # should be 2 * n**2
 noise_steps: 10 # 200
 sample_num: 2   # 1000
 time_type: 'exp'
 
 # Train
-epochs: 3000
+epochs: 6000
 train_lr: 0.0001
-batch_size: 18
+batch_size: 20
 
 
 # Eval

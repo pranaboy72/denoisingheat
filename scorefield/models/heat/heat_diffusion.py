@@ -401,4 +401,4 @@ class HeatDiffusion_Revised(object):
     
     
     def sample_timesteps(self, n):
-        return torch.randint(low=1, high=self.noise_steps+1, size=(n,)).long()
+        return torch.randint(low=1, high=self.noise_steps+1, size=(n,), device=self.device).long()

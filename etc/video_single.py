@@ -1,20 +1,26 @@
 import numpy as np
 import cv2
+from PIL import Image
 
 img_list = np.load('../results/heat/eval.npy', allow_pickle=True)
 
 frames = []
 
 for i in range(img_list.shape[0]):
-    img_array = img_list[i][0][:,:,:3]    
+    if isinstance(img_list[i][0], Image.Image):
+        img_array = np.array(img_list[i][0])
+
+    else:
+        img_array = img_list[i][0][:,:,:3]    
 
     if img_array.dtype == np.float32:
         img_array = (img_array * 255).astype(np.uint8)
-
+    
     frame = cv2.cvtColor(img_array, cv2.COLOR_RGB2BGR)
     frames.append(frame)
 
 frame_height, frame_width, _ = frames[0].shape
+
 fps = 10
 video_filename = f'./eval.mp4'
     

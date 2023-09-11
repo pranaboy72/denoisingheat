@@ -17,10 +17,10 @@ def slice_to_rgb(slice_):
 
     return image_from_plot
 
-imgs = np.load('./heat.npy')
+imgs = np.load('../results/heat/eval.npy', allow_pickle=True)
 rgb_frames = [slice_to_rgb(slice_) for slice_ in imgs]
 
-video_filename = 'heat_neumann.mp4'
+video_filename = 'eval.mp4'
 
 fps = 20
 with imageio.get_writer(video_filename, mode='I', fps=fps) as writer:

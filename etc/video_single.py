@@ -2,7 +2,7 @@ import numpy as np
 import cv2
 from PIL import Image
 
-img_list = np.load('../results/heat/eval.npy', allow_pickle=True)
+img_list = np.load('../results/heat/heat.npy', allow_pickle=True)
 
 frames = []
 
@@ -21,7 +21,7 @@ for i in range(img_list.shape[0]):
 
 frame_height, frame_width, _ = frames[0].shape
 
-fps = 10
+fps = 60
 video_filename = f'./eval.mp4'
     
 fourcc = cv2.VideoWriter_fourcc(*'mp4v')
@@ -31,3 +31,7 @@ for frame in frames:
     video.write(frame)
     
 video.release()
+
+
+# If you want to merge two videos, write following line in the terminal:
+# ffmpeg -i eval.mp4 -i heat.mp4 -filter_complex "[0:v][1:v]vstack=inputs=2[v]" -map "[v]" merged.mp4

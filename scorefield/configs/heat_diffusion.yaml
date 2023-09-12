@@ -4,7 +4,7 @@ device: 'cuda'
 image_size: 64
 goal_bounds: [-0.8, 0.8, -0.8, 0.8]
 agent_bounds: [-1.,1.,-1.,1.]
-obstacles: [[80,80,180,160]]  # O : [70, 80, 180, 160]
+obstacles: [[0,80,180,160]]  # O : [70, 80, 180, 160]
 
 # Misc
 seed: 123
@@ -14,7 +14,7 @@ model_path: 'pretrained/'
 
 # Diffusion & Model
 u0: 100  # 100
-min_heat_step: 8 # 8 #1568     # should be 2 * n**2
+min_heat_step: 50 # 8 #1568     # should be 2 * n**2
 max_heat_step: 14450 # 7988 #72200    # should be 2 * n**2
 noise_steps: 10 # 200
 sample_num: 2   # 1000

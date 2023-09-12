@@ -227,7 +227,8 @@ class HeatDiffusion_Revised(object):
         self.heat_steps = self.convert_timespace(diffusion_steps).to(device)
         print(f'dt:{self.heat_steps}')
         self.std = torch.sqrt(self.heat_steps / 2)
-        self.std[4:] = self.std[3]
+        # self.std[4:] = self.std[3]
+        self.std = torch.clamp(self.std, max=image_size//2)
         print(f'heat kernel std:{self.std}')
 
     def convert_space(self, previous, converted):
@@ -322,8 +323,9 @@ class HeatDiffusion_Revised(object):
 
         K = self.compute_K(u)
 
-        for b in range(u.shape[0]):
-            u[b, heat_sources[b,...,0], heat_sources[b,...,1]] = self.u0
+        for b in range(heat_sources.shape[0]):
+            for g in range(heat_sources.shape[1]):
+                u[b, heat_sources[b,g,0], heat_sources[b,g,1]] = self.u0
             
         max_time_steps = torch.max(heat_dts).item()
 

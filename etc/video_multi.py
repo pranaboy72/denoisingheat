@@ -1,24 +1,37 @@
 import numpy as np
 import cv2
-import imageio
 from PIL import Image
 
-img_list = np.load('img_list.npy', allow_pickle=True).tolist()
+img_list = np.load('../results/heat/eval.npy', allow_pickle=True)
+heat_list = np.load('../results/heat/heat.npy', allow_pickle=True)
+all_list = [img_list, heat_list]
 
-frames = [cv2.cvtColor(np.array(img), cv2.COLOR_RGB2BGR) for img in img_list]
-    
-frame_height, frame_width, _ = frames[0].shape
-fps = 50
-video_filename = f'./video.mp4'
+for i, lst in enumerate(all_list):
+    frames = []
 
-fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+    for i in range(lst.shape[0]):
+        if isinstance(lst[i][0], Image.Image):
+            img_array = np.array(lst[i][0])
 
-video = cv2.VideoWriter(video_filename, fourcc, fps, (frame_width, frame_height))
+        else:
+            img_array = lst[i][0][:,:,:3]    
 
-for frame in frames:
-    video.write(frame)
+        if img_array.dtype == np.float32:
+            img_array = (img_array * 255).astype(np.uint8)
+        
+        frame = cv2.cvtColor(img_array, cv2.COLOR_RGB2BGR)
+        frames.append(frame)
 
-video.release()
-# image_list = np.load('./img_list.npy', allow_pickle=True)
-# image_array_list = [np.array(img) for img in image_list]
-# imageio.mimwrite('./video.mp4', image_array_list, fps=50)
+    frame_height, frame_width, _ = frames[0].shape
+
+    fps = 30
+    video_filename = f'./eval{i}.mp4'
+        
+    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+    video = cv2.VideoWriter(video_filename, fourcc, fps, (frame_width, frame_height))
+
+    for frame in frames:
+        video.write(frame)
+        
+    video.release()
+

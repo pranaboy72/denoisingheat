@@ -11,7 +11,8 @@ class Node:
         self.cost = 0
 
 class RRTStar:
-    def __init__(self, time_steps, delta_dist=0.05, radius=0.1, device='cuda'):
+    def __init__(self, image_size, time_steps, delta_dist=0.05, radius=0.1, device='cuda'):
+        self.image_size = image_size
         self.time_steps = time_steps
         self.delta_dist = delta_dist
         self.radius = radius
@@ -41,8 +42,11 @@ class RRTStar:
         return new_node
 
     def collision_check(self, node, obstacle_mask):
-        if 0 <= int(node.h * 0.5 + 0.5) < obstacle_mask.shape[0] and 0 <= int(node.w * 0.5 + 0.5) < obstacle_mask.shape[1]:
-            return not obstacle_mask[int(node.h * 0.5 + 0.5), int(node.w * 0.5 + 0.5)]
+        h_pixel = self.norm_to_pixel(node.h)
+        w_pixel = self.norm_to_pixel(node.w)
+        
+        if 0 <= h_pixel < self.image_size and 0 <= w_pixel < self.image_size:
+            return not obstacle_mask[h_pixel, w_pixel].item()
         return False
 
     def find_nearest(self, node, nodes):
@@ -80,11 +84,11 @@ class RRTStar:
         new_node.cost = min_cost
 
     def plan_for_one(self, start, goal, obstacle_mask, max_iters=2000):
-        nodes = [start]
+        nodes = [goal]  # start with goal
 
         for _ in range(max_iters):
-            rand_node = self.get_random_node(obstacle_mask)
-            nearest_node = self.find_nearest(rand_node, nodes)
+            rand_node = goal
+            nearest_node = self.find_nearest(start, nodes)
             new_node = self.steer(nearest_node, rand_node)
 
             if not self.collision_check(new_node, obstacle_mask):
@@ -94,10 +98,24 @@ class RRTStar:
             neighbours = self.get_neighbour_nodes(new_node, nodes)
             self.optimize_path(new_node, neighbours, obstacle_mask)
 
-            if self.distance(new_node, goal) < self.delta_dist:
-                return self.get_path(new_node)
+            if self.distance(new_node, start) < self.delta_dist or len(nodes) == self.time_steps:
+                path = self.get_path(new_node)
+                while len(path) < self.time_steps:
+                    path.insert(0, path[0])
+                return path
 
         return None
+    
+    def steer(self, from_node, to_node):
+        theta = np.arctan2(to_node.h - from_node.h, to_node.w - from_node.w)
+        steps_remaining = self.time_steps - len(self.paths)  # paths represent the nodes added so far
+        dist = self.distance(from_node, to_node)
+        step_dist = dist / steps_remaining
+        new_node = Node(from_node.h + step_dist * np.sin(theta),
+                        from_node.w + step_dist * np.cos(theta))
+        new_node.parent = from_node
+        new_node.cost = from_node.cost + self.distance(new_node, from_node)
+        return new_node
 
     def get_path(self, last_node):
         path = []
@@ -105,6 +123,9 @@ class RRTStar:
             path.append((last_node.h, last_node.w))
             last_node = last_node.parent
         return path[::-1]
+    
+    def norm_to_pixel(self, coordinate): # [-1~1] -> 64x64
+        return int((coordinate + 1) * self.image_size / 2)        
 
     def plan(self, starts, goals, obstacle_masks=None, max_iters=2000):
         self.B = starts.shape[0]

@@ -1,59 +1,128 @@
 import numpy as np
 import random
+import torch
+import math
 
 class Node:
-    def __init__(self, x, y):
-        self.x = x
-        self.y = y
+    def __init__(self, h, w):
+        self.h = h
+        self.w = w
         self.parent = None
+        self.cost = 0
+
+class RRTStar:
+    def __init__(self, time_steps, delta_dist=0.05, radius=0.1, device='cuda'):
+        self.time_steps = time_steps
+        self.delta_dist = delta_dist
+        self.radius = radius
+        self.device = device
+
+    def distance(self, n1, n2):
+        return math.sqrt((n1.h - n2.h)**2 + (n1.w - n2.w)**2)
+
+    def collision_check(self, node, obstacle_mask):
+        if obstacle_mask is None:
+            return True
+        h_index = int(node.h * 0.5 + 0.5)
+        w_index = int(node.w * 0.5 + 0.5)
+
+        if 0 <= h_index < obstacle_mask.shape[0] and 0 <= w_index < obstacle_mask.shape[1]:
+            return not obstacle_mask[h_index, w_index].item()
+
+        return False
+
+
+    def steer(self, from_node, to_node):
+        theta = np.arctan2(to_node.h - from_node.h, to_node.w - from_node.w)
+        new_node = Node(from_node.h + self.delta_dist * np.sin(theta),
+                        from_node.w + self.delta_dist * np.cos(theta))
+        new_node.parent = from_node
+        new_node.cost = from_node.cost + self.distance(new_node, from_node)
+        return new_node
+
+    def collision_check(self, node, obstacle_mask):
+        if 0 <= int(node.h * 0.5 + 0.5) < obstacle_mask.shape[0] and 0 <= int(node.w * 0.5 + 0.5) < obstacle_mask.shape[1]:
+            return not obstacle_mask[int(node.h * 0.5 + 0.5), int(node.w * 0.5 + 0.5)]
+        return False
+
+    def find_nearest(self, node, nodes):
+        nearest = nodes[0]
+        min_dist = self.distance(node, nearest)
+        for n in nodes:
+            d = self.distance(node, n)
+            if d < min_dist:
+                nearest = n
+                min_dist = d
+        return nearest
+
+    def get_random_node(self, obstacle_mask):
+        while True:
+            rand_node = Node(random.uniform(-1, 1), random.uniform(-1, 1))
+            if self.collision_check(rand_node, obstacle_mask):
+                return rand_node
+
+    def get_neighbour_nodes(self, new_node, nodes):
+        return [node for node in nodes if self.distance(node, new_node) <= self.radius]
+
+    def optimize_path(self, new_node, neighbours, obstacle_mask):
+        if not neighbours:
+            return
+        min_cost = new_node.cost
+        best_parent = new_node.parent
+        for neighbour in neighbours:
+            if self.collision_check(neighbour, obstacle_mask):
+                continue
+            temp_cost = neighbour.cost + self.distance(neighbour, new_node)
+            if temp_cost < min_cost:
+                min_cost = temp_cost
+                best_parent = neighbour
+        new_node.parent = best_parent
+        new_node.cost = min_cost
+
+    def plan_for_one(self, start, goal, obstacle_mask, max_iters=2000):
+        nodes = [start]
+
+        for _ in range(max_iters):
+            rand_node = self.get_random_node(obstacle_mask)
+            nearest_node = self.find_nearest(rand_node, nodes)
+            new_node = self.steer(nearest_node, rand_node)
+
+            if not self.collision_check(new_node, obstacle_mask):
+                continue
+
+            nodes.append(new_node)
+            neighbours = self.get_neighbour_nodes(new_node, nodes)
+            self.optimize_path(new_node, neighbours, obstacle_mask)
+
+            if self.distance(new_node, goal) < self.delta_dist:
+                return self.get_path(new_node)
+
+        return None
+
+    def get_path(self, last_node):
+        path = []
+        while last_node:
+            path.append((last_node.h, last_node.w))
+            last_node = last_node.parent
+        return path[::-1]
+
+    def plan(self, starts, goals, obstacle_masks=None, max_iters=2000):
+        self.B = starts.shape[0]
+        self.starts = [Node(h.item(), w.item()) for h, w in starts[:, 0]]
+        self.goals = [Node(h.item(), w.item()) for h, w in goals[:, 0]]
         
-def distance(a, b):
-    return np.sqrt((a.x - b.x)**2 + (a.y - b.y)**2)
+        if obstacle_masks is not None:
+            obstacle_masks = obstacle_masks.to(self.device)
 
-def get_random_node(x_max, y_max):
-    return Node(random.uniform(0, x_max), random.uniform(0, y_max))
-
-def get_nearest_node(node_list, random_node):
-    dlist = [distance(node, random_node) for node in node_list]
-    return node_list[np.argmin(dlist)]
-
-def steer(from_node, to_node, extend_length=float('inf')):
-    angle = np.arctan2(to_node.y - from_node.y, to_node.x - from_node.x)
-    length = distance(from_node, to_node)
-    
-    if extend_length > length:
-        extend_length = length
+        self.paths = []
+        for b in range(self.B):
+            self.paths.append(self.plan_for_one(self.starts[b], self.goals[b], obstacle_masks[b] if obstacle_masks is not None else None, max_iters))
+            if len(self.paths[b]) < self.time_steps:
+                repeats = self.time_steps - len(self.paths[b])
+                for _ in range(repeats):
+                    self.paths[b].append(self.paths[b][-1])
         
-    x = from_node.x + extend_length * np.cos(angle)
-    y = from_node.y + extend_length * np.sin(angle)
-    
-    return Node(x,y)
+        return self.paths
 
-def rrt_planning(start, goal, x_max, y_max, expand_dis=0.1, max_nodes=500):
-    start_node = Node(start[0], start[1])
-    goal_node = Node(goal[0], goal[1])
-    node_list = [start_node]
-    
-    for _ in range(max_nodes):
-        rnd_node = get_random_node(x_max, y_max)
-        nearest_node = get_nearest_node(node_list, rnd_node)
-        new_node = steer(nearest_node, rnd_node, expand_dis)
-        new_node.parent = nearest_node
-        node_list.append(new_node)
-        
-        if distance(new_node, goal_node) < expand_dis:
-            final_node = steer(new_node, goal_node, expand_dis)
-            final_node.parent = new_node
-            node_list.append(final_node)
-            break
-        
-    path = [[goal[0], goal[1]]]
-    while final_node.parent:
-        path.append([final_node.x, final_node.y])
-        final_node = final_node.parent
-    path.append([start[0], start[1]])
-    
-    return path[::-1]
-
-
-    
+    def random_sample(self):
+        return [random.randint(1, self.time_steps-2) for _ in range(self.B)]

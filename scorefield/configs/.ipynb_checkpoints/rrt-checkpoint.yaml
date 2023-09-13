@@ -1,0 +1,23 @@
+device: 'cuda'
+
+# Env
+image_size: 64
+goal_bounds: [-0.8, 0.8, -0.8, 0.8]
+agent_bounds: [-1.,1.,-1.,1.]
+obstacles: [[80,80,180,160]]  # O : [70, 80, 180, 160]
+
+# Misc
+seed: 123
+
+# RRT & Model
+delta_dist: 0.05
+radius: 0.1
+time_steps: 60
+
+# Train
+iterations: 6000
+train_lr: 0.0001
+batch_size: 18
+
+
+# Eval

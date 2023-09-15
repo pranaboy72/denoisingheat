@@ -12,14 +12,13 @@ seed: 123
 # RRT & Model
 delta_dist: 0.1
 radius: 0.02
-noise_steps: 10
-time_steps: 60
+time_steps: 10
 sample_num: 2
 
 # Train
 iterations: 6000
 train_lr: 0.0001
-batch_size: 36
+batch_size: 18
 
 
 # Eval

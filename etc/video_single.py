@@ -2,7 +2,7 @@ import numpy as np
 import cv2
 from PIL import Image
 
-img_list = np.load('../results/heat/heat.npy', allow_pickle=True)
+img_list = np.load('../results/rrt/eval.npy', allow_pickle=True)
 
 frames = []
 

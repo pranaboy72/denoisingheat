@@ -2,6 +2,7 @@ import numpy as np
 import random
 import torch
 import math
+from scipy.interpolate import interp1d
 
 class Node:
     def __init__(self, h, w):
@@ -105,7 +106,7 @@ class RRTStar:
         new_node.parent = best_parent
         new_node.cost = min_cost
 
-    def plan_for_one(self, start, goal, obstacle_mask, max_iters=10000):
+    def plan_for_one(self, start, goal, obstacle_mask, max_iters=2000):
         nodes = [goal]  # start with the goal
 
         for _ in range(max_iters):
@@ -123,7 +124,8 @@ class RRTStar:
             self.optimize_path(new_node, neighbours, obstacle_mask)
 
             if self.distance(new_node, start) < self.delta_dist:
-                path = self.get_path(new_node)
+                raw_path = self.get_path(new_node)
+                path = self.interpolate_path(raw_path, self.time_steps)
                 # Optimize the path
                 # path = self.shortcut_path(path, obstacle_mask)
 
@@ -164,6 +166,23 @@ class RRTStar:
                     break
             i += 1
         return optimized_path
+    
+
+    def interpolate_path(self, path, num_points=10):
+        # Extracting x and y coordinates from path
+        x, y = zip(*path)
+        # Creating a parameter for our path
+        u = np.linspace(0, 1, len(path))
+        # Creating the interpolation functions
+        fx = interp1d(u, x, kind='linear')
+        fy = interp1d(u, y, kind='linear')
+        # Creating new parameters for the desired number of points
+        new_u = np.linspace(0, 1, num_points)
+        # Getting the new interpolated path
+        new_x = fx(new_u)
+        new_y = fy(new_u)
+        return list(zip(new_x, new_y))
+
 
 
     def collision_check_line(self, start, end, obstacle_mask):
@@ -182,8 +201,9 @@ class RRTStar:
                     return False
         return True
 
-    def plan(self, starts, goals, obstacle_masks=None, max_iters=4000):
-        self.B = starts.shape[0]
+    def plan(self, starts, goals, obstacle_masks=None, max_iters=2000):
+        self.B, N, _ = starts.shape
+        
         self.starts = [Node(h.item(), w.item()) for h, w in starts[:, 0]]
         self.goals = [Node(h.item(), w.item()) for h, w in goals[:, 0]]
 
@@ -197,12 +217,11 @@ class RRTStar:
             paths.append(path)
             deltas.append(delta)
         
+        paths = torch.tensor(paths, dtype=starts.dtype, device=starts.device)
         deltas = torch.tensor(deltas, dtype=starts.dtype, device=starts.device)
         
         assert deltas.ndim == 3
 
-        return paths, torch.flip(deltas, [1])
+        return torch.flip(paths, [1]), torch.flip(deltas, [1])
 
 
-    def random_sample(self, batch_size, noise_steps):
-        return torch.tensor([random.randint(1, noise_steps+1) for _ in range(batch_size)], dtype=torch.int64, device=self.device)

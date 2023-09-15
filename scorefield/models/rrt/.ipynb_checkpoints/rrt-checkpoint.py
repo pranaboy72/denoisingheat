@@ -11,7 +11,8 @@ class Node:
         self.cost = 0
 
 class RRTStar:
-    def __init__(self, time_steps, delta_dist=0.05, radius=0.1, device='cuda'):
+    def __init__(self, image_size, time_steps, delta_dist=0.05, radius=0.1, device='cuda'):
+        self.image_size = image_size
         self.time_steps = time_steps
         self.delta_dist = delta_dist
         self.radius = radius
@@ -40,10 +41,31 @@ class RRTStar:
         new_node.cost = from_node.cost + self.distance(new_node, from_node)
         return new_node
 
-    def collision_check(self, node, obstacle_mask):
-        if 0 <= int(node.h * 0.5 + 0.5) < obstacle_mask.shape[0] and 0 <= int(node.w * 0.5 + 0.5) < obstacle_mask.shape[1]:
-            return not obstacle_mask[int(node.h * 0.5 + 0.5), int(node.w * 0.5 + 0.5)]
-        return False
+
+    def collision_check(self, new_node, obstacle_mask, previous_node=None):
+        h_pixel = self.norm_to_pixel(new_node.h)
+        w_pixel = self.norm_to_pixel(new_node.w)
+
+        if previous_node is None:
+            if 0 <= h_pixel < self.image_size and 0 <= w_pixel < self.image_size:
+                return not obstacle_mask[h_pixel, w_pixel].item()
+            return False
+
+        num_steps = int(self.distance(previous_node, new_node) / self.delta_dist)
+        if num_steps == 0:
+            num_steps = 1
+
+        for i in range(num_steps):
+            alpha = i / num_steps
+            h = previous_node.h * (1 - alpha) + new_node.h * alpha
+            w = previous_node.w * (1 - alpha) + new_node.w * alpha
+            h_pixel = self.norm_to_pixel(h)
+            w_pixel = self.norm_to_pixel(w)
+            if 0 <= h_pixel < self.image_size and 0 <= w_pixel < self.image_size:
+                if obstacle_mask[h_pixel, w_pixel].item():
+                    return False
+        return True
+
 
     def find_nearest(self, node, nodes):
         nearest = nodes[0]
@@ -56,10 +78,14 @@ class RRTStar:
         return nearest
 
     def get_random_node(self, obstacle_mask):
-        while True:
+        count = 0
+        while count < 100:
             rand_node = Node(random.uniform(-1, 1), random.uniform(-1, 1))
             if self.collision_check(rand_node, obstacle_mask):
                 return rand_node
+            count += 1
+        return None
+
 
     def get_neighbour_nodes(self, new_node, nodes):
         return [node for node in nodes if self.distance(node, new_node) <= self.radius]
@@ -79,25 +105,38 @@ class RRTStar:
         new_node.parent = best_parent
         new_node.cost = min_cost
 
-    def plan_for_one(self, start, goal, obstacle_mask, max_iters=2000):
-        nodes = [start]
+    def plan_for_one(self, start, goal, obstacle_mask, max_iters=10000):
+        nodes = [goal]  # start with the goal
 
         for _ in range(max_iters):
             rand_node = self.get_random_node(obstacle_mask)
+            if rand_node is None:
+                continue
             nearest_node = self.find_nearest(rand_node, nodes)
             new_node = self.steer(nearest_node, rand_node)
 
-            if not self.collision_check(new_node, obstacle_mask):
+            if not self.collision_check(new_node, obstacle_mask, nearest_node):
                 continue
 
             nodes.append(new_node)
             neighbours = self.get_neighbour_nodes(new_node, nodes)
             self.optimize_path(new_node, neighbours, obstacle_mask)
 
-            if self.distance(new_node, goal) < self.delta_dist:
-                return self.get_path(new_node)
+            if self.distance(new_node, start) < self.delta_dist:
+                path = self.get_path(new_node)
+                # Optimize the path
+                # path = self.shortcut_path(path, obstacle_mask)
 
-        return None
+                while len(path) < self.time_steps:
+                    path.insert(0, path[0])
+                deltas = [(path[i][0]-path[i+1][0], path[i][1]-path[i+1][1]) for i in range(len(path)-1)]
+                deltas.insert(0, (0, 0))
+                return path, deltas
+
+        print("Warning: RRT* couldn't find a path in given iterations. Consider increasing max_iters.")
+        default_path = [(start.h, start.w) for _ in range(self.time_steps)]  # Default path staying at the start position
+        return default_path, [(0, 0) for _ in range(self.time_steps)]
+
 
     def get_path(self, last_node):
         path = []
@@ -105,24 +144,65 @@ class RRTStar:
             path.append((last_node.h, last_node.w))
             last_node = last_node.parent
         return path[::-1]
+    
+    def norm_to_pixel(self, coordinate): # [-1~1] -> 64x64
+        return int((coordinate + 1) * self.image_size / 2)        
+    
+    def shortcut_path(self, path, obstacle_mask):
+        # Start with the full path
+        optimized_path = path.copy()
+        i = 0
+        # While there's more path left to optimize
+        while i < len(optimized_path) - 2:
+            nodeA = Node(*optimized_path[i])
+            for j in range(len(optimized_path) - 1, i + 1, -1):
+                nodeB = Node(*optimized_path[j])
+                # If the straight path between nodeA and nodeB is collision-free, make a shortcut
+                if self.collision_check(nodeA, obstacle_mask, nodeB):
+                    # Remove nodes between nodeA and nodeB
+                    del optimized_path[i+1:j]
+                    break
+            i += 1
+        return optimized_path
 
-    def plan(self, starts, goals, obstacle_masks=None, max_iters=2000):
+
+    def collision_check_line(self, start, end, obstacle_mask):
+        num_steps = int(self.distance(start, end) / self.delta_dist)
+        if num_steps == 0:
+            num_steps = 1
+
+        for i in range(num_steps):
+            alpha = i / num_steps
+            h = start.h * (1 - alpha) + end.h * alpha
+            w = start.w * (1 - alpha) + end.w * alpha
+            h_pixel = self.norm_to_pixel(h)
+            w_pixel = self.norm_to_pixel(w)
+            if 0 <= h_pixel < self.image_size and 0 <= w_pixel < self.image_size:
+                if obstacle_mask[h_pixel, w_pixel].item():
+                    return False
+        return True
+
+    def plan(self, starts, goals, obstacle_masks=None, max_iters=4000):
         self.B = starts.shape[0]
         self.starts = [Node(h.item(), w.item()) for h, w in starts[:, 0]]
         self.goals = [Node(h.item(), w.item()) for h, w in goals[:, 0]]
-        
+
         if obstacle_masks is not None:
             obstacle_masks = obstacle_masks.to(self.device)
 
-        self.paths = []
-        for b in range(self.B):
-            self.paths.append(self.plan_for_one(self.starts[b], self.goals[b], obstacle_masks[b] if obstacle_masks is not None else None, max_iters))
-            if len(self.paths[b]) < self.time_steps:
-                repeats = self.time_steps - len(self.paths[b])
-                for _ in range(repeats):
-                    self.paths[b].append(self.paths[b][-1])
-        
-        return self.paths
+        paths, deltas = [], []
 
-    def random_sample(self):
-        return [random.randint(1, self.time_steps-2) for _ in range(self.B)]
+        for b in range(self.B):
+            path, delta = self.plan_for_one(self.starts[b], self.goals[b], obstacle_masks[b] if obstacle_masks is not None else None, max_iters)
+            paths.append(path)
+            deltas.append(delta)
+        
+        deltas = torch.tensor(deltas, dtype=starts.dtype, device=starts.device)
+        
+        assert deltas.ndim == 3
+
+        return paths, torch.flip(deltas, [1])
+
+
+    def random_sample(self, batch_size, noise_steps):
+        return torch.tensor([random.randint(1, noise_steps+1) for _ in range(batch_size)], dtype=torch.int64, device=self.device)

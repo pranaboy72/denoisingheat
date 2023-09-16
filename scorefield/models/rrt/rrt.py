@@ -201,27 +201,26 @@ class RRTStar:
                     return False
         return True
 
-    def plan(self, starts, goals, obstacle_masks=None, max_iters=2000):
+    def plan(self, starts, goals, obstacle_masks=None, max_iters=4000):
         self.B, N, _ = starts.shape
         
-        self.starts = [Node(h.item(), w.item()) for h, w in starts[:, 0]]
+        self.starts = [[Node(h.item(), w.item()) for h, w in start_batch] for start_batch in starts]
         self.goals = [Node(h.item(), w.item()) for h, w in goals[:, 0]]
 
         if obstacle_masks is not None:
             obstacle_masks = obstacle_masks.to(self.device)
 
-        paths, deltas = [], []
+        all_paths = torch.zeros((self.B, N, self.time_steps, 2), dtype=starts.dtype, device=starts.device)
+        all_deltas = torch.zeros((self.B, N, self.time_steps, 2), dtype=starts.dtype, device=starts.device)
+
 
         for b in range(self.B):
-            path, delta = self.plan_for_one(self.starts[b], self.goals[b], obstacle_masks[b] if obstacle_masks is not None else None, max_iters)
-            paths.append(path)
-            deltas.append(delta)
-        
-        paths = torch.tensor(paths, dtype=starts.dtype, device=starts.device)
-        deltas = torch.tensor(deltas, dtype=starts.dtype, device=starts.device)
-        
-        assert deltas.ndim == 3
+            for n in range(N):
+                path, delta = self.plan_for_one(self.starts[b][n], self.goals[b], obstacle_masks[b] if obstacle_masks is not None else None, max_iters)
+                
+                all_paths[b, n] = torch.tensor(path, dtype=starts.dtype, device=starts.device)
+                all_deltas[b, n] = torch.tensor(delta, dtype=starts.dtype, device=starts.device)
 
-        return torch.flip(paths, [1]), torch.flip(deltas, [1])
+        return torch.flip(all_paths, [2]), torch.flip(all_deltas, [2])
 
 

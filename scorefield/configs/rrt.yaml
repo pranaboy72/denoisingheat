@@ -4,7 +4,7 @@ device: 'cuda'
 image_size: 64
 goal_bounds: [-0.8, 0.8, -0.8, 0.8]
 agent_bounds: [-1.,1.,-1.,1.]
-obstacles: [[0,80,180,160]]  # O : [70, 80, 180, 160]
+obstacles: [[80,80,180,160]]  # O : [70, 80, 180, 160]
 
 # Misc
 seed: 123
@@ -23,3 +23,4 @@ sample_num: 2
 
 
 # Eval
+seed: 12345

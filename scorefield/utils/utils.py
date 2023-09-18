@@ -124,7 +124,10 @@ def is_valid_obstacles(mask, x_start, x_size, y_start, y_size, min_distance):
         return False
     return True
 
-def randgen_obstacle_masks(batch_size, image_size, device='cuda'):
+def randgen_obstacle_masks(batch_size, image_size, seed:Optional[int]=None, device='cuda'):
+    if seed is not None:
+        torch.manual_seed(seed)
+    
     total_obstacle_area = int(image_size**2 * 0.3) # 4800 when 128
     max_length = int(image_size*3/5) # 80 when 128
     min_length = int(image_size/4) # 30 when 128
@@ -171,8 +174,12 @@ def gen_goals(
     img_size: int,
     dist:Optional[float]=None, 
     obstacles:Optional[torch.Tensor]=None,
+    seed: Optional[int]=None,
     device='cuda'
 ):
+    if seed is not None:
+        torch.manual_seed(seed)
+    
     assert len(bounds) == 4, f'Unappropriate map bound: {bounds}'
     if isinstance(n, int):
         M = 1
@@ -209,6 +216,55 @@ def gen_goals(
                 if valid:
                     goals.append(torch.cat((x, y), dim=1))
                     break
+    return torch.stack(goals)
+
+def gen_agents(
+    bounds, 
+    n:Union[tuple, int], 
+    img_size: int,
+    dist:Optional[float]=None, 
+    obstacles:Optional[torch.Tensor]=None,
+    seed: Optional[int]=None,
+    device='cuda'
+):
+    if seed is not None:
+        torch.manual_seed(seed)
+    
+    assert len(bounds) == 4, f'Unappropriate map bound: {bounds}'
+    if isinstance(n, int):
+        M = 1
+        N = n
+    else:
+        M, N = n
+        
+    goals = []
+    for batch_idx in range(N):
+        batch_goals = []
+        while len(batch_goals) < M:
+            x = bounds[0] + (bounds[1] - bounds[0]) * torch.rand((1, 1), dtype=torch.float32, device=device)
+            y = bounds[2] + (bounds[3] - bounds[2]) * torch.rand((1, 1), dtype=torch.float32, device=device)
+
+            # Check against obstacles
+            if obstacles is not None:
+                pixel_x = ((x + 1) * 0.5 * (img_size - 1)).long().item()
+                pixel_y = ((y + 1) * 0.5 * (img_size - 1)).long().item()
+
+                if not is_valid_goals(pixel_x, pixel_y, obstacles, batch_idx):
+                    continue
+
+            # Check against existing goals for this batch
+            valid = True
+            if dist is not None:
+                for existing_goal in batch_goals:
+                    if get_distance([x, y], [existing_goal[0], existing_goal[1]]) < dist:
+                        valid = False
+                        break
+            
+            if valid:
+                batch_goals.append(torch.cat((x, y), dim=1))
+
+        goals.append(torch.cat(batch_goals, dim=0))
+    
     return torch.stack(goals)
 
 
@@ -490,7 +546,7 @@ def overlay_goal_agent(img, obj, goal, agent, circle_rad:float=3):
     for i, center in enumerate(agent_pix.cpu().numpy()):
         for cen in center:
             c0, c1 = round(cen[1]), round(cen[0])
-            draws[i].ellipse((c0-circle_rad, c1-circle_rad, c0+circle_rad, c1+circle_rad), fill = 'blue', outline='red')
+            draws[i].ellipse((c0-circle_rad, c1-circle_rad, c0+circle_rad, c1+circle_rad), fill = 'red', outline='red')
         
     return imgs
     

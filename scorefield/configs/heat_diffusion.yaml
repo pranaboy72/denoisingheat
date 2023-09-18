@@ -7,7 +7,6 @@ agent_bounds: [-1.,1.,-1.,1.]
 obstacles: [[0,80,180,160]]  # O : [70, 80, 180, 160]
 
 # Misc
-seed: 123
 work_dir: '.'
 log_path: './logs/'
 model_path: 'pretrained/'
@@ -27,3 +26,4 @@ batch_size: 18
 
 
 # Eval
+seed: 1523

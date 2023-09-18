@@ -12,7 +12,7 @@ log_path: './logs/'
 model_path: 'pretrained/'
 
 # Diffusion & Model
-u0: 100  # 100
+u0: 1  # 100
 min_heat_step: 50 # 8 #1568     # should be 2 * n**2
 max_heat_step: 14450 # 7988 #72200    # should be 2 * n**2
 noise_steps: 10 # 200

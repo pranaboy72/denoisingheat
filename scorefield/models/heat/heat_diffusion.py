@@ -350,8 +350,7 @@ class HeatDiffusion_Revised(object):
             u[current_mask] += self.dt * (K[current_mask] * laplacian[current_mask])
 
         u_filtered = self.gaussian_filter(u, diffusion_steps)
-        norm_u = u_filtered / u_filtered.sum(dim=(1,2), keepdim=True)
-        return norm_u
+        return u_filtered
     
     
     def sample_from_heat(self, u, n):

@@ -26,4 +26,4 @@ batch_size: 18
 
 
 # Eval
-seed: 1523
+seed: 12345

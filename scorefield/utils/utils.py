@@ -546,7 +546,7 @@ def overlay_goal_agent(img, obj, goal, agent, circle_rad:float=3):
     for i, center in enumerate(agent_pix.cpu().numpy()):
         for cen in center:
             c0, c1 = round(cen[1]), round(cen[0])
-            draws[i].ellipse((c0-circle_rad, c1-circle_rad, c0+circle_rad, c1+circle_rad), fill = 'blue', outline='red')
+            draws[i].ellipse((c0-circle_rad, c1-circle_rad, c0+circle_rad, c1+circle_rad), fill = 'red', outline='red')
         
     return imgs
     

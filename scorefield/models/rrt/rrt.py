@@ -201,7 +201,7 @@ class RRTStar:
                     return False
         return True
 
-    def plan(self, starts, goals, obstacle_masks=None, max_iters=4000):
+    def plan(self, starts, goals, obstacle_masks=None, max_iters=5000):
         self.B, N, _ = starts.shape
         
         self.starts = [[Node(h.item(), w.item()) for h, w in start_batch] for start_batch in starts]

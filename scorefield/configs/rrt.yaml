@@ -4,21 +4,18 @@ device: 'cuda'
 image_size: 64
 goal_bounds: [-0.8, 0.8, -0.8, 0.8]
 agent_bounds: [-1.,1.,-1.,1.]
-obstacles: [[80,80,180,160]]  # O : [70, 80, 180, 160]
-
-# Misc
-seed: 123
+obstacles: [[0,80,180,160]]  # O : [70, 80, 180, 160]
 
 # RRT & Model
 delta_dist: 0.08
 radius: 0.02
-time_steps: 10
+time_steps: 15
 max_iters: 4000
 
 # Train
-iterations: 6000
+iterations: 8000
 train_lr: 0.0001
-batch_size: 18
+batch_size: 12
 sample_num: 2
 
 

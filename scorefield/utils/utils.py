@@ -167,6 +167,7 @@ def is_valid_goals(pixel_x, pixel_y, obstacles, batch_idx, clearance=3):
     x_start, x_end = max(0, pixel_x-clearance), min(obstacles.shape[1], pixel_x+clearance)
     y_start, y_end = max(0, pixel_y-clearance), min(obstacles.shape[2], pixel_y+clearance)
     return torch.sum(obstacles[batch_idx, x_start:x_end, y_start:y_end]) == 0
+
     
 def gen_goals(
     bounds, 
@@ -540,13 +541,17 @@ def overlay_goal_agent(img, obj, goal, agent, circle_rad:float=3):
             p1, p0 = round(p[1]),round(p[0])
             w, h = objs[obj_num].size
             bg.paste(objs[obj_num], (p1 - w//2, p0 - h//2), objs[obj_num])
-        imgs.append(bg)
+            
+        overlay = Image.new("RGBA", bg.size, (255, 255, 255, 0))
+        draw_overlay = ImageDraw.Draw(overlay)
         
-    draws = [ImageDraw.Draw(goal_img) for goal_img in imgs]
-    for i, center in enumerate(agent_pix.cpu().numpy()):
-        for cen in center:
+        for cen in agent_pix[i].cpu().numpy():
             c0, c1 = round(cen[1]), round(cen[0])
-            draws[i].ellipse((c0-circle_rad, c1-circle_rad, c0+circle_rad, c1+circle_rad), fill = 'red', outline='red')
+            dot_color = (255, 0, 0, 200)
+            draw_overlay.ellipse((c0-circle_rad, c1-circle_rad, c0+circle_rad, c1+circle_rad), fill = dot_color, outline=dot_color)
+            
+        composite_img = Image.alpha_composite(bg.convert("RGBA"), overlay)
+        imgs.append(composite_img)
         
     return imgs
     

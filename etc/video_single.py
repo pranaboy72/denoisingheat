@@ -2,7 +2,7 @@ import numpy as np
 import cv2
 from PIL import Image
 
-img_list = np.load('../results/heat/eval.npy', allow_pickle=True)
+img_list = np.load('../results/baselines/eval.npy', allow_pickle=True)
 
 frames = []
 
@@ -21,7 +21,7 @@ for i in range(img_list.shape[0]):
 
 frame_height, frame_width, _ = frames[0].shape
 
-fps = 80
+fps = 20
 video_filename = f'./eval.mp4'
     
 fourcc = cv2.VideoWriter_fourcc(*'mp4v')

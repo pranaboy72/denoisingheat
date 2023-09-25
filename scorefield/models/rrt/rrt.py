@@ -43,31 +43,6 @@ class RRTStar:
         return new_node
 
 
-    def collision_check(self, new_node, obstacle_mask, previous_node=None):
-        h_pixel = self.norm_to_pixel(new_node.h)
-        w_pixel = self.norm_to_pixel(new_node.w)
-
-        if previous_node is None:
-            if 0 <= h_pixel < self.image_size and 0 <= w_pixel < self.image_size:
-                return not obstacle_mask[h_pixel, w_pixel].item()
-            return False
-
-        num_steps = int(self.distance(previous_node, new_node) / self.delta_dist)
-        if num_steps == 0:
-            num_steps = 1
-
-        for i in range(num_steps):
-            alpha = i / num_steps
-            h = previous_node.h * (1 - alpha) + new_node.h * alpha
-            w = previous_node.w * (1 - alpha) + new_node.w * alpha
-            h_pixel = self.norm_to_pixel(h)
-            w_pixel = self.norm_to_pixel(w)
-            if 0 <= h_pixel < self.image_size and 0 <= w_pixel < self.image_size:
-                if obstacle_mask[h_pixel, w_pixel].item():
-                    return False
-        return True
-
-
     def find_nearest(self, node, nodes):
         nearest = nodes[0]
         min_dist = self.distance(node, nearest)
@@ -91,6 +66,7 @@ class RRTStar:
     def get_neighbour_nodes(self, new_node, nodes):
         return [node for node in nodes if self.distance(node, new_node) <= self.radius]
 
+
     def optimize_path(self, new_node, neighbours, obstacle_mask):
         if not neighbours:
             return
@@ -105,39 +81,6 @@ class RRTStar:
                 best_parent = neighbour
         new_node.parent = best_parent
         new_node.cost = min_cost
-
-    def plan_for_one(self, start, goal, obstacle_mask, max_iters=2000):
-        nodes = [goal]  # start with the goal
-
-        for _ in range(max_iters):
-            rand_node = self.get_random_node(obstacle_mask)
-            if rand_node is None:
-                continue
-            nearest_node = self.find_nearest(rand_node, nodes)
-            new_node = self.steer(nearest_node, rand_node)
-
-            if not self.collision_check(new_node, obstacle_mask, nearest_node):
-                continue
-
-            nodes.append(new_node)
-            neighbours = self.get_neighbour_nodes(new_node, nodes)
-            self.optimize_path(new_node, neighbours, obstacle_mask)
-
-            if self.distance(new_node, start) < self.delta_dist:
-                raw_path = self.get_path(new_node)
-                path = self.interpolate_path(raw_path, self.time_steps)
-                # Optimize the path
-                # path = self.shortcut_path(path, obstacle_mask)
-
-                while len(path) < self.time_steps:
-                    path.insert(0, path[0])
-                deltas = [(path[i][0]-path[i+1][0], path[i][1]-path[i+1][1]) for i in range(len(path)-1)]
-                deltas.insert(0, (0, 0))
-                return path, deltas
-
-        print("Warning: RRT* couldn't find a path in given iterations. Consider increasing max_iters.")
-        default_path = [(start.h, start.w) for _ in range(self.time_steps)]  # Default path staying at the start position
-        return default_path, [(0, 0) for _ in range(self.time_steps)]
 
 
     def get_path(self, last_node):
@@ -167,6 +110,11 @@ class RRTStar:
             i += 1
         return optimized_path
     
+    def extract_nodes_from_tensors(self, starts, goals):
+        B, N, _ = starts.shape
+        self.starts = [[Node(h.item(), w.item()) for h, w in start_batch] for start_batch in starts]
+        self.goals = [[Node(h.item(), w.item()) for _ in range(N)] for h, w in goals.squeeze(1)]  # Duplicate the goal for N times
+
 
     def interpolate_path(self, path, num_points=10):
         # Extracting x and y coordinates from path
@@ -183,44 +131,154 @@ class RRTStar:
         new_y = fy(new_u)
         return list(zip(new_x, new_y))
 
+    def bresenham_line(self, x0, y0, x1, y1):
+        points = []
+        dx = abs(x1 - x0)
+        dy = abs(y1 - y0)
+        sx = 1 if x0 < x1 else -1
+        sy = 1 if y0 < y1 else -1
+        err = dx - dy
+        
+        while True:
+            points.append((x0, y0))
+            if x0 == x1 and y0 == y1:
+                break
+            e2 = 2 * err
+            if e2 > -dy:
+                err -= dy
+                x0 += sx
+            if e2 < dx:
+                err += dx
+                y0 += sy
+        return points
 
 
     def collision_check_line(self, start, end, obstacle_mask):
-        num_steps = int(self.distance(start, end) / self.delta_dist)
-        if num_steps == 0:
-            num_steps = 1
-
-        for i in range(num_steps):
-            alpha = i / num_steps
-            h = start.h * (1 - alpha) + end.h * alpha
-            w = start.w * (1 - alpha) + end.w * alpha
-            h_pixel = self.norm_to_pixel(h)
-            w_pixel = self.norm_to_pixel(w)
-            if 0 <= h_pixel < self.image_size and 0 <= w_pixel < self.image_size:
-                if obstacle_mask[h_pixel, w_pixel].item():
+        x0, y0 = self.norm_to_pixel(start.h), self.norm_to_pixel(start.w)
+        x1, y1 = self.norm_to_pixel(end.h), self.norm_to_pixel(end.w)
+        
+        # Get all the cells the line would pass through using Bresenham's
+        for x, y in self.bresenham_line(x0, y0, x1, y1):
+            if 0 <= x < self.image_size and 0 <= y < self.image_size:
+                if obstacle_mask[x, y].item():
                     return False
         return True
+    
+    def collision_check(self, new_node, obstacle_mask, previous_node=None):
+        """ Collision check using Bresenham's Line Algorithm """
+        if previous_node:
+            return self.collision_check_line(previous_node, new_node, obstacle_mask)
+        else:
+            h_pixel = self.norm_to_pixel(new_node.h)
+            w_pixel = self.norm_to_pixel(new_node.w)
+            if 0 <= h_pixel < self.image_size and 0 <= w_pixel < self.image_size:
+                return not obstacle_mask[h_pixel, w_pixel].item()
+            return False
+        
+    def collision_check_with_margin(self, node, obstacle_mask, margin=3):
+        h_pixel = self.norm_to_pixel(node.h)
+        w_pixel = self.norm_to_pixel(node.w)
+        
+        for dh in range(-margin, margin+1):
+            for dw in range(-margin, margin+1):
+                h_index = h_pixel + dh
+                w_index = w_pixel + dw
+
+                if 0 <= h_index < self.image_size and 0 <= w_index < self.image_size:
+                    if obstacle_mask[h_index, w_index].item():
+                        return False
+        return True
+        
+    def plan_for_one(self, start, goal, obstacle_mask, max_iters=2000):
+        nodes = [start]
+
+        for _ in range(max_iters):
+            rand_node = self.get_random_node(obstacle_mask)
+            if rand_node is None:
+                continue
+            nearest_node = self.find_nearest(rand_node, nodes)
+            new_node = self.steer(nearest_node, rand_node)
+
+            # Check if the direct line between nearest_node and new_node collides with any obstacle
+            if not self.collision_check_line(nearest_node, new_node, obstacle_mask):
+                continue
+
+            if not self.collision_check_with_margin(new_node, obstacle_mask):
+                continue
+
+            nodes.append(new_node)
+            neighbours = self.get_neighbour_nodes(new_node, nodes)
+            self.optimize_path(new_node, neighbours, obstacle_mask)
+
+            if self.distance(new_node, goal) < self.delta_dist:
+                return self.get_path(new_node)
+
+        print("Warning: RRT* couldn't find a path in given iterations. Consider increasing max_iters.")
+        return [start]  # Default path staying at the start position
+
 
     def plan(self, starts, goals, obstacle_masks=None, max_iters=5000):
         self.B, N, _ = starts.shape
-        
+
         self.starts = [[Node(h.item(), w.item()) for h, w in start_batch] for start_batch in starts]
-        self.goals = [Node(h.item(), w.item()) for h, w in goals[:, 0]]
+        self.goals = [[Node(h.item(), w.item()) for h, w in goal_batch] for goal_batch in goals]
 
         if obstacle_masks is not None:
             obstacle_masks = obstacle_masks.to(self.device)
 
-        all_paths = torch.zeros((self.B, N, self.time_steps, 2), dtype=starts.dtype, device=starts.device)
-        all_deltas = torch.zeros((self.B, N, self.time_steps, 2), dtype=starts.dtype, device=starts.device)
-
+        all_paths = []
+        all_deltas = []
 
         for b in range(self.B):
+            paths_for_batch = []
+            deltas_for_batch = []
+            
+            # Finding path for each start and goal pair
             for n in range(N):
-                path, delta = self.plan_for_one(self.starts[b][n], self.goals[b], obstacle_masks[b] if obstacle_masks is not None else None, max_iters)
+                path = self.plan_for_one(self.starts[b][n], self.goals[b][0], obstacle_masks[b] if obstacle_masks is not None else None, max_iters)
+                paths_for_batch.append(path)
                 
-                all_paths[b, n] = torch.tensor(path, dtype=starts.dtype, device=starts.device)
-                all_deltas[b, n] = torch.tensor(delta, dtype=starts.dtype, device=starts.device)
+                deltas = [(path[i+1][0] - path[i][0], path[i+1][1] - path[i][1]) for i in range(len(path) - 1)]
+                deltas_for_batch.append(deltas)
+                
+            all_paths.append(paths_for_batch)
+            all_deltas.append(deltas_for_batch)
 
-        return torch.flip(all_paths, [2]), torch.flip(all_deltas, [2])
+        max_path_length = max([len(path) for batch_paths in all_paths for path in batch_paths])
+        padded_paths = []
 
+        for batch_paths in all_paths:
+            padded_batch = []
+            for path in batch_paths:
+                padded_length = max_path_length - len(path)
+                if padded_length > 0:
+                    # Repeat the last node for padding
+                    padding = [path[-1] for _ in range(padded_length)]
+                    path += padding
+                padded_batch.append(path)
+            padded_paths.append(padded_batch)
 
+        # Convert the padded list to torch tensor
+        try:
+            all_paths_tensor = torch.tensor(padded_paths, dtype=torch.float32).to(self.device)
+        except Exception as e:
+            print(f"Error with padded_paths: {padded_paths}")
+            raise e
+
+        # Convert the padded list to torch tensor
+        all_paths_tensor = torch.tensor(padded_paths, dtype=torch.float32).to(self.device)
+
+        # Repeat similar steps for all_deltas
+        max_delta_length = max([len(delta) for batch_deltas in all_deltas for delta in batch_deltas])
+
+        padded_deltas = []
+        for batch_deltas in all_deltas:
+            padded_batch = []
+            for delta in batch_deltas:
+                padded_delta = delta + [[0, 0] for _ in range(max_delta_length - len(delta))] # 0, 0 might be a suitable padding for deltas
+                padded_batch.append(padded_delta)
+            padded_deltas.append(padded_batch)
+
+        all_deltas_tensor = torch.tensor(padded_deltas, dtype=torch.float32).to(self.device)
+
+        return all_paths_tensor, all_deltas_tensor

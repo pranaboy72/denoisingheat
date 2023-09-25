@@ -7,9 +7,9 @@ agent_bounds: [-1.,1.,-1.,1.]
 obstacles: [[0,80,180,160]]  # O : [70, 80, 180, 160]
 
 # RRT & Model
-delta_dist: 0.08
+delta_dist: 0.1
 radius: 0.02
-time_steps: 15
+time_steps: 10
 max_iters: 4000
 
 # Train

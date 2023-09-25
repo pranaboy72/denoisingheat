@@ -128,7 +128,7 @@ def randgen_obstacle_masks(batch_size, image_size, seed:Optional[int]=None, devi
     if seed is not None:
         torch.manual_seed(seed)
     
-    total_obstacle_area = int(image_size**2 * 0.3) # 4800 when 128
+    total_obstacle_area = int(image_size**2 * 0.4) # 4800 when 128
     max_length = int(image_size*3/5) # 80 when 128
     min_length = int(image_size/4) # 30 when 128
     min_distance = int(image_size/5) # 30

@@ -244,41 +244,4 @@ class RRTStar:
             all_paths.append(paths_for_batch)
             all_deltas.append(deltas_for_batch)
 
-        max_path_length = max([len(path) for batch_paths in all_paths for path in batch_paths])
-        padded_paths = []
-
-        for batch_paths in all_paths:
-            padded_batch = []
-            for path in batch_paths:
-                padded_length = max_path_length - len(path)
-                if padded_length > 0:
-                    # Repeat the last node for padding
-                    padding = [path[-1] for _ in range(padded_length)]
-                    path += padding
-                padded_batch.append(path)
-            padded_paths.append(padded_batch)
-
-        # Convert the padded list to torch tensor
-        try:
-            all_paths_tensor = torch.tensor(padded_paths, dtype=torch.float32).to(self.device)
-        except Exception as e:
-            print(f"Error with padded_paths: {padded_paths}")
-            raise e
-
-        # Convert the padded list to torch tensor
-        all_paths_tensor = torch.tensor(padded_paths, dtype=torch.float32).to(self.device)
-
-        # Repeat similar steps for all_deltas
-        max_delta_length = max([len(delta) for batch_deltas in all_deltas for delta in batch_deltas])
-
-        padded_deltas = []
-        for batch_deltas in all_deltas:
-            padded_batch = []
-            for delta in batch_deltas:
-                padded_delta = delta + [[0, 0] for _ in range(max_delta_length - len(delta))] # 0, 0 might be a suitable padding for deltas
-                padded_batch.append(padded_delta)
-            padded_deltas.append(padded_batch)
-
-        all_deltas_tensor = torch.tensor(padded_deltas, dtype=torch.float32).to(self.device)
-
-        return all_paths_tensor, all_deltas_tensor
+        return all_paths, all_deltas

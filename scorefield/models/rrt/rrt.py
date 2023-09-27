@@ -12,12 +12,20 @@ class Node:
         self.cost = 0
 
 class RRTStar:
-    def __init__(self, image_size, time_steps, delta_dist=0.05, radius=0.1, device='cuda'):
+    def __init__(self, image_size, time_steps, delta_dist=0.05, radius=0.1, device='cuda', random_seed=None):
         self.image_size = image_size
         self.time_steps = time_steps
         self.delta_dist = delta_dist
         self.radius = radius
         self.device = device
+        self.random_seed = random_seed
+        self.set_random_seed()
+        
+    def set_random_seed(self):
+        if self.random_seed is not None:
+            random.seed(self.random_seed)
+            np.random.seed(self.random_seed)
+            torch.manual_seed(self.random_seed)
 
     def distance(self, n1, n2):
         return math.sqrt((n1.h - n2.h)**2 + (n1.w - n2.w)**2)
@@ -214,7 +222,7 @@ class RRTStar:
                 return self.get_path(new_node)
 
         print("Warning: RRT* couldn't find a path in given iterations. Consider increasing max_iters.")
-        return [start]  # Default path staying at the start position
+        return [None]  # Default path staying at the start position
 
 
     def plan(self, starts, goals, obstacle_masks=None, max_iters=5000):
@@ -236,6 +244,8 @@ class RRTStar:
             # Finding path for each start and goal pair
             for n in range(N):
                 path = self.plan_for_one(self.starts[b][n], self.goals[b][0], obstacle_masks[b] if obstacle_masks is not None else None, max_iters)
+                if path[0] == None:
+                    return None, None
                 paths_for_batch.append(path)
                 
                 deltas = [(path[i+1][0] - path[i][0], path[i+1][1] - path[i][1]) for i in range(len(path) - 1)]

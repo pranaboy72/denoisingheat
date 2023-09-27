@@ -521,7 +521,7 @@ def overlay_images(img, img_size, objs, pos, n:Optional[list]=None):
     return torch.tensor(imgs, dtype=pos.dtype, device=pos.device).permute(0, 3, 1, 2)
     
     
-def overlay_goal_agent(img, obj, goal, agent, circle_rad:float=3):
+def overlay_goal_agent(img, obj, goal, agent, col='red',circle_rad:float=3):
     assert goal.dim() == 3
     assert agent.dim() == 3
     
@@ -547,7 +547,10 @@ def overlay_goal_agent(img, obj, goal, agent, circle_rad:float=3):
         
         for cen in agent_pix[i].cpu().numpy():
             c0, c1 = round(cen[1]), round(cen[0])
-            dot_color = (255, 0, 0, 200)
+            if col == 'red':
+                dot_color = (255, 0, 0, 200)
+            elif col == 'blue':
+                dot_color = (0, 0, 255, 200)
             draw_overlay.ellipse((c0-circle_rad, c1-circle_rad, c0+circle_rad, c1+circle_rad), fill = dot_color, outline=dot_color)
             
         composite_img = Image.alpha_composite(bg.convert("RGBA"), overlay)

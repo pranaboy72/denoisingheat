@@ -245,7 +245,7 @@ class RRTStar:
             for n in range(N):
                 path = self.plan_for_one(self.starts[b][n], self.goals[b][0], obstacle_masks[b] if obstacle_masks is not None else None, max_iters)
                 if path[0] == None:
-                    return None, None
+                    return []
                 paths_for_batch.append(path)
                 
                 deltas = [(path[i+1][0] - path[i][0], path[i+1][1] - path[i][1]) for i in range(len(path) - 1)]

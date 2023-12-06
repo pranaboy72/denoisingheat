@@ -127,6 +127,7 @@ def is_valid_obstacles(mask, x_start, x_size, y_start, y_size, min_distance):
 def randgen_obstacle_masks(batch_size, image_size, seed:Optional[int]=None, device='cuda'):
     if seed is not None:
         torch.manual_seed(seed)
+        random.seed(seed)
     
     total_obstacle_area = int(image_size**2 * 0.4) # 4800 when 128
     max_length = int(image_size*3/5) # 80 when 128
@@ -383,7 +384,6 @@ def draw_goal_samples(img, goal_pos, current_pos, circle_rad:float=2):
     return img_new
 
 
-# garbage: 'https://e7.pngegg.com/pngimages/459/226/png-clipart-brown-cardboard-boxes-with-black-trash-bags-and-garbage-waste-collection-household-hazardous-waste-house-clearance-waste-management-others-miscellaneous-recycling.png'
 def get_url_image(url, name):
     png = requests.get(url)
 
@@ -667,3 +667,56 @@ def clip_batch_vectors(vector_field, max_mag=1.0):
     V_clipped = V * scale_factors
     
     return torch.stack((U_clipped, V_clipped), dim=-1)
+
+
+def clear_img(x, goals, mapp, dot_size=4):
+    points = x.cpu().clone().squeeze(0).cpu().numpy()
+    goals_np = goals.cpu().clone().squeeze(0).numpy()
+    goal_img = Image.open('assets/toy_exp/waste0.png')
+
+    img_width, img_height = mapp.size[0], mapp.size[1]
+    goal_width = int(img_width / 5)
+    goal_height = int(img_height / 5)
+    goal_img_resized = goal_img.resize((goal_width, goal_height))
+    
+    for goal in goals_np:
+        goal_h = int((goal[0] + 1) / 2 * img_height)
+        goal_w = int((goal[1] + 1) / 2 * img_width)
+
+        adjusted_h = goal_h - goal_height // 2
+        adjusted_w = goal_w - goal_width // 2
+        goal_pos = (adjusted_w, adjusted_h)
+
+        mapp.paste(goal_img_resized, goal_pos, goal_img_resized)
+
+    h_coords = (points[:, 0] + 1) / 2 * img_height
+    w_coords = (points[:, 1] + 1) / 2 * img_width
+
+    draw = ImageDraw.Draw(mapp)
+    for xc, yc in zip(w_coords, h_coords):
+        draw.ellipse([(xc- dot_size / 2, yc - dot_size / 2),
+                      (xc + dot_size / 2, yc + dot_size / 2)],
+                     fill='red')
+        
+    return [mapp]
+
+def clear_obs(goals, mapp):
+    goals_np = goals.cpu().clone().squeeze(0).numpy()
+    goal_img = Image.open('assets/toy_exp/waste0.png')
+
+    img_width, img_height = mapp.size[0], mapp.size[1]
+    goal_width = int(img_width / 5)
+    goal_height = int(img_height / 5)
+    goal_img_resized = goal_img.resize((goal_width, goal_height))
+    
+    for goal in goals_np:
+        goal_h = int((goal[0] + 1) / 2 * img_height)
+        goal_w = int((goal[1] + 1) / 2 * img_width)
+
+        adjusted_h = goal_h - goal_height // 2
+        adjusted_w = goal_w - goal_width // 2
+        goal_pos = (adjusted_w, adjusted_h)
+
+        mapp.paste(goal_img_resized, goal_pos, goal_img_resized)
+        
+    return [mapp]

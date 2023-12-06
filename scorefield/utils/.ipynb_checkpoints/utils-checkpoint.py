@@ -124,8 +124,12 @@ def is_valid_obstacles(mask, x_start, x_size, y_start, y_size, min_distance):
         return False
     return True
 
-def randgen_obstacle_masks(batch_size, image_size, device='cuda'):
-    total_obstacle_area = int(image_size**2 * 0.3) # 4800 when 128
+def randgen_obstacle_masks(batch_size, image_size, seed:Optional[int]=None, device='cuda'):
+    if seed is not None:
+        torch.manual_seed(seed)
+        random.seed(seed)
+    
+    total_obstacle_area = int(image_size**2 * 0.4) # 4800 when 128
     max_length = int(image_size*3/5) # 80 when 128
     min_length = int(image_size/4) # 30 when 128
     min_distance = int(image_size/5) # 30
@@ -164,6 +168,7 @@ def is_valid_goals(pixel_x, pixel_y, obstacles, batch_idx, clearance=3):
     x_start, x_end = max(0, pixel_x-clearance), min(obstacles.shape[1], pixel_x+clearance)
     y_start, y_end = max(0, pixel_y-clearance), min(obstacles.shape[2], pixel_y+clearance)
     return torch.sum(obstacles[batch_idx, x_start:x_end, y_start:y_end]) == 0
+
     
 def gen_goals(
     bounds, 
@@ -171,8 +176,12 @@ def gen_goals(
     img_size: int,
     dist:Optional[float]=None, 
     obstacles:Optional[torch.Tensor]=None,
+    seed: Optional[int]=None,
     device='cuda'
 ):
+    if seed is not None:
+        torch.manual_seed(seed)
+    
     assert len(bounds) == 4, f'Unappropriate map bound: {bounds}'
     if isinstance(n, int):
         M = 1
@@ -209,6 +218,55 @@ def gen_goals(
                 if valid:
                     goals.append(torch.cat((x, y), dim=1))
                     break
+    return torch.stack(goals)
+
+def gen_agents(
+    bounds, 
+    n:Union[tuple, int], 
+    img_size: int,
+    dist:Optional[float]=None, 
+    obstacles:Optional[torch.Tensor]=None,
+    seed: Optional[int]=None,
+    device='cuda'
+):
+    if seed is not None:
+        torch.manual_seed(seed)
+    
+    assert len(bounds) == 4, f'Unappropriate map bound: {bounds}'
+    if isinstance(n, int):
+        M = 1
+        N = n
+    else:
+        M, N = n
+        
+    goals = []
+    for batch_idx in range(N):
+        batch_goals = []
+        while len(batch_goals) < M:
+            x = bounds[0] + (bounds[1] - bounds[0]) * torch.rand((1, 1), dtype=torch.float32, device=device)
+            y = bounds[2] + (bounds[3] - bounds[2]) * torch.rand((1, 1), dtype=torch.float32, device=device)
+
+            # Check against obstacles
+            if obstacles is not None:
+                pixel_x = ((x + 1) * 0.5 * (img_size - 1)).long().item()
+                pixel_y = ((y + 1) * 0.5 * (img_size - 1)).long().item()
+
+                if not is_valid_goals(pixel_x, pixel_y, obstacles, batch_idx):
+                    continue
+
+            # Check against existing goals for this batch
+            valid = True
+            if dist is not None:
+                for existing_goal in batch_goals:
+                    if get_distance([x, y], [existing_goal[0], existing_goal[1]]) < dist:
+                        valid = False
+                        break
+            
+            if valid:
+                batch_goals.append(torch.cat((x, y), dim=1))
+
+        goals.append(torch.cat(batch_goals, dim=0))
+    
     return torch.stack(goals)
 
 
@@ -326,7 +384,6 @@ def draw_goal_samples(img, goal_pos, current_pos, circle_rad:float=2):
     return img_new
 
 
-# garbage: 'https://e7.pngegg.com/pngimages/459/226/png-clipart-brown-cardboard-boxes-with-black-trash-bags-and-garbage-waste-collection-household-hazardous-waste-house-clearance-waste-management-others-miscellaneous-recycling.png'
 def get_url_image(url, name):
     png = requests.get(url)
 
@@ -464,7 +521,7 @@ def overlay_images(img, img_size, objs, pos, n:Optional[list]=None):
     return torch.tensor(imgs, dtype=pos.dtype, device=pos.device).permute(0, 3, 1, 2)
     
     
-def overlay_goal_agent(img, obj, goal, agent, circle_rad:float=3):
+def overlay_goal_agent(img, obj, goal, agent, col='red',circle_rad:float=3):
     assert goal.dim() == 3
     assert agent.dim() == 3
     
@@ -484,13 +541,20 @@ def overlay_goal_agent(img, obj, goal, agent, circle_rad:float=3):
             p1, p0 = round(p[1]),round(p[0])
             w, h = objs[obj_num].size
             bg.paste(objs[obj_num], (p1 - w//2, p0 - h//2), objs[obj_num])
-        imgs.append(bg)
+            
+        overlay = Image.new("RGBA", bg.size, (255, 255, 255, 0))
+        draw_overlay = ImageDraw.Draw(overlay)
         
-    draws = [ImageDraw.Draw(goal_img) for goal_img in imgs]
-    for i, center in enumerate(agent_pix.cpu().numpy()):
-        for cen in center:
+        for cen in agent_pix[i].cpu().numpy():
             c0, c1 = round(cen[1]), round(cen[0])
-            draws[i].ellipse((c0-circle_rad, c1-circle_rad, c0+circle_rad, c1+circle_rad), fill = 'red', outline='red')
+            if col == 'red':
+                dot_color = (255, 0, 0, 200)
+            elif col == 'blue':
+                dot_color = (0, 0, 255, 200)
+            draw_overlay.ellipse((c0-circle_rad, c1-circle_rad, c0+circle_rad, c1+circle_rad), fill = dot_color, outline=dot_color)
+            
+        composite_img = Image.alpha_composite(bg.convert("RGBA"), overlay)
+        imgs.append(composite_img)
         
     return imgs
     
@@ -603,3 +667,56 @@ def clip_batch_vectors(vector_field, max_mag=1.0):
     V_clipped = V * scale_factors
     
     return torch.stack((U_clipped, V_clipped), dim=-1)
+
+
+def clear_img(x, goals, mapp, dot_size=4):
+    points = x.cpu().clone().squeeze(0).cpu().numpy()
+    goals_np = goals.cpu().clone().squeeze(0).numpy()
+    goal_img = Image.open('assets/toy_exp/waste0.png')
+
+    img_width, img_height = mapp.size[0], mapp.size[1]
+    goal_width = int(img_width / 5)
+    goal_height = int(img_height / 5)
+    goal_img_resized = goal_img.resize((goal_width, goal_height))
+    
+    for goal in goals_np:
+        goal_h = int((goal[0] + 1) / 2 * img_height)
+        goal_w = int((goal[1] + 1) / 2 * img_width)
+
+        adjusted_h = goal_h - goal_height // 2
+        adjusted_w = goal_w - goal_width // 2
+        goal_pos = (adjusted_w, adjusted_h)
+
+        mapp.paste(goal_img_resized, goal_pos, goal_img_resized)
+
+    h_coords = (points[:, 0] + 1) / 2 * img_height
+    w_coords = (points[:, 1] + 1) / 2 * img_width
+
+    draw = ImageDraw.Draw(mapp)
+    for xc, yc in zip(w_coords, h_coords):
+        draw.ellipse([(xc- dot_size / 2, yc - dot_size / 2),
+                      (xc + dot_size / 2, yc + dot_size / 2)],
+                     fill='red')
+        
+    return [mapp]
+
+def clear_obs(goals, mapp):
+    goals_np = goals.cpu().clone().squeeze(0).numpy()
+    goal_img = Image.open('assets/toy_exp/waste0.png')
+
+    img_width, img_height = mapp.size[0], mapp.size[1]
+    goal_width = int(img_width / 5)
+    goal_height = int(img_height / 5)
+    goal_img_resized = goal_img.resize((goal_width, goal_height))
+    
+    for goal in goals_np:
+        goal_h = int((goal[0] + 1) / 2 * img_height)
+        goal_w = int((goal[1] + 1) / 2 * img_width)
+
+        adjusted_h = goal_h - goal_height // 2
+        adjusted_w = goal_w - goal_width // 2
+        goal_pos = (adjusted_w, adjusted_h)
+
+        mapp.paste(goal_img_resized, goal_pos, goal_img_resized)
+        
+    return [mapp]

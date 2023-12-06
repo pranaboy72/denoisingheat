@@ -4,7 +4,7 @@ device: 'cuda'
 image_size: 64
 goal_bounds: [-0.8, 0.8, -0.8, 0.8]
 agent_bounds: [-1.,1.,-1.,1.]
-obstacles: [[0,80,180,160]]  # O : [70, 80, 180, 160]
+obstacles: [[70,80,180,160]]  # O : [70, 80, 180, 160], U: [0, 80, 180, 160]
 
 # Misc
 work_dir: '.'
@@ -16,13 +16,13 @@ u0: 1  # 100
 min_heat_step: 50 # 8 #1568     # should be 2 * n**2
 max_heat_step: 14450 # 7988 #72200    # should be 2 * n**2
 noise_steps: 10 # 200
-sample_num: 2   # 1000
+sample_num: 3   # 1000
 time_type: 'exp'
 
 # Train
-iterations: 6000
+iterations: 8000
 train_lr: 0.0001
-batch_size: 18
+batch_size: 20
 
 
 # Eval

@@ -23,7 +23,7 @@ from PIL import Image
 from tqdm.auto import tqdm
 from ema_pytorch import EMA
 
-from accelerate import Accelerator
+# from accelerate import Accelerator
 
 from .attend import Attend
 from .fid_evaluation import FIDEvaluation

@@ -29,8 +29,9 @@ Monitor the training with tensorboard:
 
 ## Reference
     @article{chang2023denoising,
-  title={Denoising Heat-inspired Diffusion with Insulators for Collision Free Motion Planning},
-  author={Chang, Junwoo and Ryu, Hyunwoo and Kim, Jiwoo and Yoo, Soochul and Seo, Joohwan and Prakash, Nikhil and Choi, Jongeun and Horowitz, Roberto},
-  journal={arXiv preprint arXiv:2310.12609},
-  year={2023}
-}
+      title={Denoising Heat-inspired Diffusion with Insulators for 
+    Collision Free Motion Planning},
+      author={Chang, Junwoo and Ryu, Hyunwoo and Kim, Jiwoo and Yoo, Soochul and Seo, Joohwan and Prakash, Nikhil and Choi, Jongeun and Horowitz, Roberto},
+      journal={arXiv preprint arXiv:2310.12609},
+      year={2023}
+    }

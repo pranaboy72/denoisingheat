@@ -24,7 +24,7 @@ You can save all the images to make a video of the result.
    
 ## Training
 You can train your model by changing the parameters in denoisingheat/configs/heat_diffusion.yaml and running trainer.ipynb.   
-Monitor the training with tensorboard:   
+Monitor the training with tensorboard:
     tensorboard --logdir=./runs
 
 ## Reference

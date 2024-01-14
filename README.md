@@ -1,6 +1,6 @@
 # Denoising Heat-inspired Diffusion
 
-## Installation & Setting
+## Installation
     conda create -n denoisingheat python=3.9
     conda activate denoisingheat
     pip install -r requirements.txt

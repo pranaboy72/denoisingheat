@@ -1,4 +1,4 @@
-# diffusion_pathplanning   
+# Denoising Heat-inspired Diffusion
 
 ## Installation & Setting
     conda create -n denoisingheat python=3.9

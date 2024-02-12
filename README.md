@@ -1,6 +1,8 @@
 # Denoising Heat-inspired Diffusion
 Training and visualizing of the model from [Denoising Heat-inspired Diffusion with Insulators for Collision Free Motion Planning](https://sites.google.com/view/denoising-heat-inspired?usp=sharing).
 
+<img src="https://github.com/pranaboy72/denoisingheat/assets/86711384/ffed73f4-3dec-4bf0-8f43-adc5f315795d" width="40%" height="40%" align="center"/>
+
 
 ## Installation
     conda create -n dnheat python=3.9

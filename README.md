@@ -1,4 +1,6 @@
 # Denoising Heat-inspired Diffusion
+Training and visualizing of the model from [Denoising Heat-inspired Diffusion with Insulators for Collision Free Motion Planning](https://sites.google.com/view/denoising-heat-inspired?usp=sharing).
+
 
 ## Installation
     conda create -n dnheat python=3.9
@@ -11,11 +13,22 @@
 Please download the 'runs' file from [this link](https://drive.google.com/drive/folders/1nskuIuQHy8V4m4Nzd2sRnJiKaXfma1Nm?usp=drive_link) and incorporate it into the repository.
 
 ## Inference
-With pretrained weights & tunable parameters, or weights & tunable parameters you have got, test the model in a random or pre-set map from `inference.ipynb`.    
+Evaluate the model in a random or pre-set map, as specified in `inference.ipynb`, applying both the pre-trained weights and the hyperparameters.   
+
 
 ## Training from scratch
-1. Train your own model with `train.ipynb`.
-   The default hyperparameters are in the `./denoisingheat/configs/heat_diffusion.yaml.`
+1. Train your own model using `train.ipynb`.
+   * Default hyperparameters are located in `./denoisingheat/configs/heat_diffusion.yaml`.
+   * You can modify the hyperparameters in the `heat_diffusion.yaml` file.
+   
+2. Evaluate your trained model using `inference.ipynb`
+    * Update the 'config_dir' path in the first block and the '.pt' file path in the second block to reflect the directory where you saved your new model.
+
+3. Monitor the training progress and analyze logs via TensorBoard:
+
+```
+tensorboard --logdir=./runs
+```
 
 
 ## Reference

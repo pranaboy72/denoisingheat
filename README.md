@@ -8,7 +8,7 @@
     pip install -r requirements.txt
 
 ## Download pretrained model
-Please download the 'runs' file from [this link](https://drive.google.com/drive/folders/16zhswoTJ86hP_SmwguCqjP-52TVrgrjh?usp=drive_link) and incorporate it into the repository.
+Please download the 'runs' file from [this link]([https://drive.google.com/drive/folders/16zhswoTJ86hP_SmwguCqjP-52TVrgrjh?usp=drive_link](https://drive.google.com/drive/folders/1nskuIuQHy8V4m4Nzd2sRnJiKaXfma1Nm?usp=drive_link)) and incorporate it into the repository.
 
 ## Reference
     @article{chang2023denoising,

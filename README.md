@@ -7,7 +7,7 @@
     pip install tensorboard
     pip install -r requirements.txt
 
-## Download pretrained model
+## Using pretrained model
 Please download the 'runs' file from [this link](https://drive.google.com/drive/folders/1nskuIuQHy8V4m4Nzd2sRnJiKaXfma1Nm?usp=drive_link) and incorporate it into the repository.
 
 ## Reference

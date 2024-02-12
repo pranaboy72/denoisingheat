@@ -20,4 +20,4 @@ Please download the 'runs' file from [this link](https://drive.google.com/drive/
     }
 
 ## Acknowledgement
-Our diffusion model is implemented based on Phil Wang's 'denoising-diffusion-pytorch' GitHub repository.
+Our diffusion model is implemented based on Phil Wang's ['denoising-diffusion-pytorch'](https://github.com/lucidrains/denoising-diffusion-pytorch) GitHub repository.

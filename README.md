@@ -20,7 +20,7 @@ Evaluate the model in a random or pre-set map, as specified in `inference.ipynb`
 
 
 ## Training from scratch
-1. Train your own model using `train.ipynb`.
+1. Train your own model using `train.ipynb`
    * Default hyperparameters are located in `./denoisingheat/configs/heat_diffusion.yaml`.
    * You can modify the hyperparameters in the `heat_diffusion.yaml` file.
    

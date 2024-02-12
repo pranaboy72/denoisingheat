@@ -15,7 +15,7 @@ With pretrained weights & tunable parameters, or weights & tunable parameters yo
 
 ## Training from scratch
 1. Train your own model with train.ipynb.
-   The default hyperparameters are in the    ./denoisingheat/configs/heat_diffusion.yaml.
+   The default hyperparameters are in the '''./denoisingheat/configs/heat_diffusion.yaml.'''
 
 
 ## Reference

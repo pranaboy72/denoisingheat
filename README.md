@@ -1,7 +1,8 @@
 # Denoising Heat-inspired Diffusion
-Training and visualizing of the model from [Denoising Heat-inspired Diffusion with Insulators for Collision Free Motion Planning](https://sites.google.com/view/denoising-heat-inspired?usp=sharing).
+Training and visualization of the model from [Denoising Heat-inspired Diffusion with Insulators for Collision Free Motion Planning](https://sites.google.com/view/denoising-heat-inspired?usp=sharing).
 
-<img src="https://github.com/pranaboy72/denoisingheat/assets/86711384/ffed73f4-3dec-4bf0-8f43-adc5f315795d" width="40%" height="40%" align="center"/>
+<p align="center"><img src="https://github.com/pranaboy72/denoisingheat/assets/86711384/c5fc8259-abd6-4b5e-8c65-99370fa85fbf" width="40%" height="40%"/>  
+<img src="https://github.com/pranaboy72/denoisingheat/assets/86711384/36053f66-a2b9-4aed-b363-02b471242c48" width="40%" height="40%"/>
 
 
 ## Installation

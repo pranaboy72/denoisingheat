@@ -1,31 +1,14 @@
 # Denoising Heat-inspired Diffusion
 
 ## Installation
-    conda create -n denoisingheat python=3.9
-    conda activate denoisingheat
+    conda create -n dnheat python=3.9
+    conda activate dnheat
+    pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+    pip install tensorboard
     pip install -r requirements.txt
 
 ## Download pretrained model
 From https://drive.google.com/drive/folders/1HGux_54jAf3KYAAvYMKWrSpJsG267HSd?usp=drive_link, you can download .pt file for the weights and .yaml for the parameters.
-
-
-## Evaluation
-To evaluate the model, check out inference.ipynb.   
-### First cell
-Load the pretrained model and its corresponding parameters.
-### Second cell
-Generate the obstacle(s) on the background.   
-### Third/Fourth/Fifth cell
-Generate additional obstacle(s) for the unreachable goal, and decide the initial distribution location.
-### Sixth cell
-Set the parameters for Langevin Dynamics, goal location. You can check out each episode(each row)'s result through interval images. 
-### Last cell
-You can save all the images to make a video of the result.
-   
-## Training
-You can train your model by changing the parameters in denoisingheat/configs/heat_diffusion.yaml and running trainer.ipynb.   
-Monitor the training with tensorboard:   
-    tensorboard --logdir=./runs
 
 ## Reference
     @article{chang2023denoising,

@@ -11,11 +11,11 @@
 Please download the 'runs' file from [this link](https://drive.google.com/drive/folders/1nskuIuQHy8V4m4Nzd2sRnJiKaXfma1Nm?usp=drive_link) and incorporate it into the repository.
 
 ## Inference
-With pretrained weights & tunable parameters, or weights & tunable parameters you have got, test the model in a random or pre-set map from inference.ipynb.    
+With pretrained weights & tunable parameters, or weights & tunable parameters you have got, test the model in a random or pre-set map from `inference.ipynb`.    
 
 ## Training from scratch
-1. Train your own model with train.ipynb.
-   The default hyperparameters are in the '''./denoisingheat/configs/heat_diffusion.yaml.'''
+1. Train your own model with `train.ipynb`.
+   The default hyperparameters are in the `./denoisingheat/configs/heat_diffusion.yaml.`
 
 
 ## Reference

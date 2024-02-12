@@ -8,7 +8,7 @@
     pip install -r requirements.txt
 
 ## Download pretrained model
-From https://drive.google.com/drive/folders/1HGux_54jAf3KYAAvYMKWrSpJsG267HSd?usp=drive_link, you can download .pt file for the weights and .yaml for the parameters.
+Please download the 'runs' file from [this link](https://drive.google.com/drive/folders/16zhswoTJ86hP_SmwguCqjP-52TVrgrjh?usp=drive_link) and incorporate it into the repository.
 
 ## Reference
     @article{chang2023denoising,
@@ -18,3 +18,6 @@ From https://drive.google.com/drive/folders/1HGux_54jAf3KYAAvYMKWrSpJsG267HSd?us
       journal={arXiv preprint arXiv:2310.12609},
       year={2023}
     }
+
+## Acknowledgement
+Our diffusion model is implemented based on Phil Wang's 'denoising-diffusion-pytorch' GitHub repository.
